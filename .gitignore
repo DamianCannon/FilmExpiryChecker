@@ -1,0 +1,19 @@
+# Build output
+bin/
+obj/
+
+# Generated reports and caches
+reports/
+cache.json
+imdb-ids.json
+
+# Personal config (copy appsettings.example.json and fill in your details)
+appsettings.json
+
+# IDE
+.idea/
+.vs/
+*.user
+
+# Claude Code
+.claude/
