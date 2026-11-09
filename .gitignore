@@ -17,3 +17,6 @@ appsettings.json
 
 # Claude Code
 .claude/
+
+# Claude Code's own permission rules can hold secrets typed into approved commands
+.claude/settings.local.json
