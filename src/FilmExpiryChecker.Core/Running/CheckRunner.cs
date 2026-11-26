@@ -2,6 +2,7 @@ using FilmExpiryChecker.Config;
 using FilmExpiryChecker.JustWatch;
 using FilmExpiryChecker.Letterboxd;
 using FilmExpiryChecker.Reporting;
+using FilmExpiryChecker.Storage;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -48,7 +49,8 @@ public sealed class RunResult
 /// One whole check: read the watchlist, look each film up on JustWatch, and group the results.
 /// Writes no reports; the caller decides what to do with the results.
 /// </summary>
-public sealed class CheckRunner(HttpClient http, ILoggerFactory? loggerFactory = null, TimeProvider? time = null)
+public sealed class CheckRunner(
+    HttpClient http, DataFolder data, ILoggerFactory? loggerFactory = null, TimeProvider? time = null)
 {
     private readonly ILoggerFactory _loggers = loggerFactory ?? NullLoggerFactory.Instance;
     private readonly TimeProvider _time = time ?? TimeProvider.System;
@@ -60,10 +62,7 @@ public sealed class CheckRunner(HttpClient http, ILoggerFactory? loggerFactory =
         var scraper = new LetterboxdScraper(http, settings.Letterboxd.Username, _loggers.CreateLogger<LetterboxdScraper>());
 
         // Slug → IMDb ID, for matching films whose titles differ between Letterboxd and JustWatch.
-        var imdbCachePath = Path.Combine(
-            Path.GetDirectoryName(Path.GetFullPath(settings.Cache.CacheFilePath)) ?? ".",
-            "imdb-ids.json");
-        var imdbCache = new ImdbIdCache(imdbCachePath);
+        var imdbCache = new ImdbIdCache(data.ImdbCacheFile);
 
         async Task<string?> ResolveImdbId(string slug, CancellationToken token)
         {
@@ -76,7 +75,7 @@ public sealed class CheckRunner(HttpClient http, ILoggerFactory? loggerFactory =
         }
 
         var cache = new JustWatchCache(
-            settings.Cache.CacheFilePath, settings.Cache.ExpiryDays, _loggers.CreateLogger<JustWatchCache>());
+            data.JustWatchCacheFile, settings.Cache.ExpiryDays, _loggers.CreateLogger<JustWatchCache>());
         var client = new JustWatchClient(
             http, settings.JustWatch.Region, cache, ResolveImdbId, _loggers.CreateLogger<JustWatchClient>());
 

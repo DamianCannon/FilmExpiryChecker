@@ -3,16 +3,25 @@ using FilmExpiryChecker.Config;
 using FilmExpiryChecker.JustWatch;
 using FilmExpiryChecker.Reporting;
 using FilmExpiryChecker.Running;
-using Microsoft.Extensions.Configuration;
+using FilmExpiryChecker.Storage;
 
-// ── Configuration ─────────────────────────────────────────────────────────────
+// ── Data folder and settings ──────────────────────────────────────────────────
 
-var config = new ConfigurationBuilder()
-    .SetBasePath(AppContext.BaseDirectory)
-    .AddJsonFile("appsettings.json", optional: false)
-    .Build();
+var data = DataFolder.Resolve(args, Environment.GetEnvironmentVariable,
+    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
 
-var settings = config.Get<AppSettings>() ?? throw new InvalidOperationException("Could not load appsettings.json");
+var imported = data.Prepare(LegacyFiles.Folders(AppContext.BaseDirectory, Environment.CurrentDirectory));
+if (imported.ImportedAnything)
+{
+    Console.WriteLine($"First run with the data folder {data.Root}; copied in:");
+    if (imported.Settings is not null) Console.WriteLine($"  settings from {imported.Settings}");
+    if (imported.JustWatchCache is not null) Console.WriteLine($"  JustWatch cache from {imported.JustWatchCache}");
+    if (imported.ImdbCache is not null) Console.WriteLine($"  IMDb ID cache from {imported.ImdbCache}");
+    if (imported.Reports > 0) Console.WriteLine($"  {imported.Reports} past report files");
+    Console.WriteLine();
+}
+
+var settings = SettingsStore.Load(data.SettingsFile);
 
 // ── HTTP client and logging ───────────────────────────────────────────────────
 
@@ -36,7 +45,7 @@ if (args.Contains("--list-services"))
 {
     Console.WriteLine($"Fetching streaming services available on JustWatch in {settings.JustWatch.Region}...\n");
 
-    var cache = new JustWatchCache(settings.Cache.CacheFilePath, settings.Cache.ExpiryDays, loggers.CreateLogger("Cache"));
+    var cache = new JustWatchCache(data.JustWatchCacheFile, settings.Cache.ExpiryDays, loggers.CreateLogger("Cache"));
     var jwClient = new JustWatchClient(http, settings.JustWatch.Region, cache, logger: loggers.CreateLogger("JustWatch"));
     var providers = await jwClient.GetProvidersAsync(cancel.Token);
 
@@ -53,11 +62,10 @@ if (args.Contains("--list-services"))
         Console.WriteLine($"{p.PackageId,-20} {p.ClearName,-40} {p.TechnicalName}");
 
     Console.WriteLine($"\n{providers.Count} services listed.");
-    Console.WriteLine("\nCopy the IDs you want into the MyServices array in appsettings.json.");
+    Console.WriteLine($"\nCopy the IDs you want into the MyServices array in {data.SettingsFile}.");
 
     // Also write to a file for easy reference
-    var servicesPath = Path.Combine(settings.Output.OutputDirectory, "available-services.txt");
-    Directory.CreateDirectory(settings.Output.OutputDirectory);
+    var servicesPath = Path.Combine(data.ReportsFolder, "available-services.txt");
 
     var lines = new List<string>
     {
@@ -77,13 +85,19 @@ if (args.Contains("--list-services"))
 
 // ── Main run ──────────────────────────────────────────────────────────────────
 
+if (string.IsNullOrWhiteSpace(settings.Letterboxd.Username))
+{
+    Console.WriteLine($"No Letterboxd username set. Add it to {data.SettingsFile} and run again.");
+    return 1;
+}
+
 Console.WriteLine("=== Film Expiry Checker ===");
 Console.WriteLine($"Region: {settings.JustWatch.Region}");
 Console.WriteLine($"Your services: {string.Join(", ", settings.JustWatch.MyServices)}");
 Console.WriteLine($"Expiry threshold: {settings.JustWatch.ExpiringSoonDays} days");
 Console.WriteLine();
 
-var runner = new CheckRunner(http, loggers);
+var runner = new CheckRunner(http, data, loggers);
 var progress = new ConsoleProgress(settings.Letterboxd.Username);
 
 RunResult result;
@@ -114,10 +128,10 @@ foreach (var group in result.Films.GroupBy(r => r.Category).OrderBy(g => g.Key))
 Console.WriteLine();
 
 if (settings.Output.Csv)
-    Console.WriteLine($"CSV written: {new CsvReporter().Write(result.Films, settings.Output.OutputDirectory)}");
+    Console.WriteLine($"CSV written: {new CsvReporter().Write(result.Films, data.ReportsFolder)}");
 
 if (settings.Output.Html)
-    Console.WriteLine($"HTML report written: {new HtmlReporter().Write(result.Films, settings.Output.OutputDirectory)}");
+    Console.WriteLine($"HTML report written: {new HtmlReporter().Write(result.Films, data.ReportsFolder)}");
 
 Console.WriteLine("\nDone.");
 return 0;

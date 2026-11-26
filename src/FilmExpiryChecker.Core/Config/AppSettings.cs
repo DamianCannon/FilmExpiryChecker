@@ -1,5 +1,6 @@
 namespace FilmExpiryChecker.Config;
 
+/// <summary>The user's settings, kept in the data folder's settings.json.</summary>
 public class AppSettings
 {
     public LetterboxdSettings Letterboxd { get; set; } = new();
@@ -23,12 +24,11 @@ public class JustWatchSettings
 public class CacheSettings
 {
     public int ExpiryDays { get; set; } = 7;
-    public string CacheFilePath { get; set; } = "./cache.json";
 }
 
+/// <summary>Which report files the command line writes (into the data folder's reports folder).</summary>
 public class OutputSettings
 {
     public bool Html { get; set; } = true;
     public bool Csv { get; set; } = true;
-    public string OutputDirectory { get; set; } = "./reports";
 }
