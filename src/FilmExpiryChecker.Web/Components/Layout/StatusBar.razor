@@ -5,6 +5,7 @@
 @inject IRefreshStatus Refresh
 @inject LatestResults Latest
 @inject DataFolder Data
+@inject FilmExpiryChecker.Web.Settings.CurrentSettings Current
 @inject TimeProvider Time
 
 <div class="status @_kind" role="status">
@@ -39,6 +40,7 @@
         Compute();
         Refresh.Changed += OnRefreshChanged;
         Latest.Changed += OnResultsChanged;
+        Current.Changed += OnSettingsChanged;
         // "today" becomes "yesterday" at midnight without anything else changing.
         _minuteTimer = new Timer(_ => Schedule(), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
     }
@@ -48,6 +50,13 @@
     private void OnRefreshChanged(RefreshState _) => Schedule();
 
     private void OnResultsChanged() => Schedule();
+
+    // New services or threshold change the counts: work them out again.
+    private void OnSettingsChanged()
+    {
+        _summaryFor = null;
+        Schedule();
+    }
 
     // Progress can arrive hundreds of times a second (films answered from the cache); render a few times a second.
     private void Schedule()
@@ -71,7 +80,7 @@
             _summary = run is null ? null : Summarise(run);
         }
 
-        var usernameSet = !string.IsNullOrWhiteSpace(SettingsStore.Load(Data.SettingsFile).Letterboxd.Username);
+        var usernameSet = Current.UsernameSet;
         var state = Refresh.State;
         _line = StatusText.For(state, _summary, usernameSet, Time.GetUtcNow(), Time.LocalTimeZone);
         // A tinted band while refreshing or after a failure, so it catches the eye.
@@ -85,7 +94,8 @@
 
     private ResultsSummary Summarise(SavedRun run)
     {
-        var results = run.Group(Time);
+        var settings = Current.Load();
+        var results = run.Group(settings.JustWatch.MyServices, settings.JustWatch.ExpiringSoonDays, Time);
         var leavingSoon = results.Count(r =>
             r.Category is FilmCategory.LeavingSoonMyServices or FilmCategory.LeavingSoonOtherServices);
         return new ResultsSummary(run.RanAt, results.Count, leavingSoon);
@@ -95,6 +105,7 @@
     {
         Refresh.Changed -= OnRefreshChanged;
         Latest.Changed -= OnResultsChanged;
+        Current.Changed -= OnSettingsChanged;
         _minuteTimer?.Dispose();
     }
 }

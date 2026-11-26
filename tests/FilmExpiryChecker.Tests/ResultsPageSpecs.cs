@@ -23,7 +23,11 @@ public sealed class ResultsPageSpecs : IDisposable
     {
         _data = new DataFolder(_temp.Path);
         _data.Prepare([]);
+        var settings = SettingsStore.Load(_data.SettingsFile);
+        settings.Letterboxd.Username = "example-user";
+        SettingsStore.Save(_data.SettingsFile, settings);
         _context.Services.AddSingleton(_data);
+        _context.Services.AddSingleton(new FilmExpiryChecker.Web.Settings.CurrentSettings(_data));
         _context.Services.AddSingleton<TimeProvider>(new FixedClock(Now));
         _context.Services.AddSingleton<IRefreshStatus>(new FakeRefreshStatus());
     }

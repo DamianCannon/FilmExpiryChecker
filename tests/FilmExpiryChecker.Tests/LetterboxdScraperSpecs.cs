@@ -135,6 +135,43 @@ public class LetterboxdScraperSpecs
     }
 
     [Fact]
+    public async Task Checking_a_public_watchlist_finds_it()
+    {
+        var (scraper, http) = ScraperWith(TwoPages);
+
+        Assert.Equal(WatchlistCheck.Found, await scraper.CheckWatchlistAsync());
+        Assert.Equal(new[] { Watchlist + "1/" }, http.RequestedUrls);
+    }
+
+    [Fact]
+    public async Task Checking_an_unknown_user_says_so()
+    {
+        var (scraper, _) = ScraperWith(_ => new HttpResponseMessage(System.Net.HttpStatusCode.Forbidden));
+
+        Assert.Equal(WatchlistCheck.NoSuchUser, await scraper.CheckWatchlistAsync());
+    }
+
+    [Fact]
+    public async Task Checking_a_watchlist_with_no_films_showing_says_empty_or_private()
+    {
+        var (scraper, _) = ScraperWith(_ => FakeHttp.Html("<html><body><p>This watchlist is private.</p></body></html>"));
+
+        Assert.Equal(WatchlistCheck.EmptyOrPrivate, await scraper.CheckWatchlistAsync());
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Checking_when_Letterboxd_cant_be_reached_or_errs_says_unreachable(bool offline)
+    {
+        var (scraper, _) = ScraperWith(_ => offline
+            ? throw new HttpRequestException("No such host is known.")
+            : new HttpResponseMessage(System.Net.HttpStatusCode.ServiceUnavailable));
+
+        Assert.Equal(WatchlistCheck.Unreachable, await scraper.CheckWatchlistAsync());
+    }
+
+    [Fact]
     public async Task The_IMDb_ID_is_read_from_the_films_page()
     {
         var (scraper, http) = ScraperWith(_ => FakeHttp.Html(

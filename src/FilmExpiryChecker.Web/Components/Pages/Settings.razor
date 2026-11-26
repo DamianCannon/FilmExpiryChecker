@@ -1,0 +1,269 @@
+@page "/settings"
+@using System.Text.Json
+@using FilmExpiryChecker.Config
+@using FilmExpiryChecker.Letterboxd
+@using FilmExpiryChecker.Web.Refresh
+@using FilmExpiryChecker.Web.Settings
+@inject CurrentSettings Current
+@inject ServiceCatalog Catalog
+@inject LatestResults Latest
+@inject IRefreshStatus Refresh
+@inject NavigationManager Navigation
+
+<PageTitle>Film Expiry Checker — Settings</PageTitle>
+
+<NavigationLock OnBeforeInternalNavigation="OnLeaving" />
+
+<h1>Settings</h1>
+
+@if (_firstRun)
+{
+    <div class="welcome">
+        <strong>Welcome.</strong> Film Expiry Checker reads your Letterboxd watchlist and checks which films are on
+        your streaming services, and which are leaving soon. Enter your Letterboxd username and tick the services you
+        have, then save.
+    </div>
+}
+
+@if (_leavingTo is not null)
+{
+    <div class="notice notice--warn" role="alert">
+        You have changes that aren't saved.
+        <button type="button" class="button" @onclick="LeaveWithoutSaving">Leave without saving</button>
+        <button type="button" class="button button--plain" @onclick="() => _leavingTo = null">Stay</button>
+    </div>
+}
+
+@if (_message is not null)
+{
+    <div class="notice @(_messageIsError ? "notice--error" : "notice--ok")" role="status">
+        @_message
+        @if (_offerRefresh)
+        {
+            <button type="button" class="button" @onclick="RefreshNow">Refresh now</button>
+        }
+    </div>
+}
+
+<form class="settings" @onsubmit="Save" @onsubmit:preventDefault>
+    <fieldset>
+        <legend>Letterboxd</legend>
+        <label for="username">Your Letterboxd username</label>
+        <input id="username" @bind="_edit.Letterboxd.Username" @bind:event="oninput" autocomplete="off" spellcheck="false" />
+        <p class="hint">Your watchlist must be public: Letterboxd only shows public watchlists.</p>
+    </fieldset>
+
+    <fieldset>
+        <legend>Streaming</legend>
+        <label for="region">Country</label>
+        <select id="region" value="@_edit.JustWatch.Region" @onchange="OnRegionChanged">
+            @if (!ServiceCatalog.Countries.Any(c => c.Code == _edit.JustWatch.Region))
+            {
+                <option value="@_edit.JustWatch.Region">@_edit.JustWatch.Region</option>
+            }
+            @foreach (var country in ServiceCatalog.Countries)
+            {
+                <option value="@country.Code">@country.Name</option>
+            }
+        </select>
+
+        <label for="service-search">Your services <span class="count">(@_edit.JustWatch.MyServices.Count ticked)</span></label>
+        <input id="service-search" type="search" placeholder="Search services" @bind="_search" @bind:event="oninput" />
+
+        <div class="services" role="group" aria-label="Your services">
+            @if (_services is null)
+            {
+                <p class="hint">Loading the services available in @CountryName…</p>
+            }
+            else if (_services.Count == 0)
+            {
+                <p class="hint">Couldn't load the services from JustWatch. <button type="button" class="button button--plain" @onclick="LoadServices">Try again</button></p>
+            }
+            else
+            {
+                @foreach (var service in ShownServices)
+                {
+                    <label class="service" @key="service.Id">
+                        <input type="checkbox" checked="@IsTicked(service.Id)" @onchange="e => Tick(service.Id, (bool)e.Value!)" />
+                        @service.Name
+                    </label>
+                }
+                @foreach (var id in UnlistedTicked)
+                {
+                    <label class="service service--unlisted" @key="id">
+                        <input type="checkbox" checked @onchange="e => Tick(id, (bool)e.Value!)" />
+                        Service @id (not listed for @CountryName)
+                    </label>
+                }
+            }
+        </div>
+    </fieldset>
+
+    <fieldset>
+        <legend>Results</legend>
+        <label for="soon">Count films as leaving soon when they leave within</label>
+        <span class="with-unit"><input id="soon" type="number" min="1" max="365" @bind="_edit.JustWatch.ExpiringSoonDays" /> days</span>
+
+        <label for="cache">Keep JustWatch's answers for</label>
+        <span class="with-unit"><input id="cache" type="number" min="1" max="30" @bind="_edit.Cache.ExpiryDays" /> days</span>
+        <p class="hint">Films checked more recently than this aren't looked up again, which makes a refresh quicker.</p>
+
+        <span class="label">Reports the command line writes</span>
+        <label class="inline"><input type="checkbox" @bind="_edit.Output.Html" /> HTML</label>
+        <label class="inline"><input type="checkbox" @bind="_edit.Output.Csv" /> CSV</label>
+    </fieldset>
+
+    <div class="actions">
+        <button type="submit" class="button" disabled="@(_saving || !RendererInfo.IsInteractive)">@(_saving ? "Checking…" : "Save")</button>
+        <button type="button" class="button button--plain" disabled="@(!Dirty)" @onclick="Cancel">Cancel</button>
+    </div>
+</form>
+
+@code {
+    private static readonly JsonSerializerOptions Json = new();
+
+    private AppSettings _saved = new();
+    private AppSettings _edit = new();
+    private IReadOnlyList<StreamingService>? _services;
+    private string _search = string.Empty;
+    private bool _firstRun, _saving, _messageIsError, _offerRefresh;
+    private string? _message;
+    private string? _leavingTo;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _saved = Current.Load();
+        _edit = Clone(_saved);
+        _firstRun = string.IsNullOrWhiteSpace(_saved.Letterboxd.Username);
+        if (RendererInfo.IsInteractive)
+            await LoadServices();
+    }
+
+    private async Task LoadServices()
+    {
+        _services = null;
+        _services = await Catalog.ServicesIn(_edit.JustWatch.Region);
+    }
+
+    private string CountryName => ServiceCatalog.Countries.FirstOrDefault(c => c.Code == _edit.JustWatch.Region)?.Name ?? _edit.JustWatch.Region;
+
+    private IEnumerable<StreamingService> ShownServices => (_services ?? [])
+        .Where(s => _search.Length == 0 || s.Name.Contains(_search.Trim(), StringComparison.OrdinalIgnoreCase))
+        .OrderByDescending(s => IsTicked(s.Id))
+        .ThenBy(s => s.Name, StringComparer.OrdinalIgnoreCase);
+
+    private IEnumerable<string> UnlistedTicked => _search.Length > 0 || _services is null ? []
+        : _edit.JustWatch.MyServices.Where(id => _services.All(s => s.Id != id));
+
+    private bool IsTicked(string id) => _edit.JustWatch.MyServices.Contains(id);
+
+    private void Tick(string id, bool ticked)
+    {
+        _edit.JustWatch.MyServices.Remove(id);
+        if (ticked) _edit.JustWatch.MyServices.Add(id);
+    }
+
+    private async Task OnRegionChanged(ChangeEventArgs e)
+    {
+        _edit.JustWatch.Region = e.Value?.ToString() ?? "GB";
+        await LoadServices();
+    }
+
+    private bool Dirty => JsonSerializer.Serialize(_edit, Json) != JsonSerializer.Serialize(_saved, Json);
+
+    private async Task Save()
+    {
+        _message = null;
+        _offerRefresh = false;
+
+        var problem = Check(_edit);
+        if (problem is null && UsernameChanged)
+        {
+            _saving = true;
+            problem = await CheckUsername(_edit.Letterboxd.Username.Trim());
+            _saving = false;
+        }
+        if (problem is not null)
+        {
+            Say(problem, error: true);
+            return;
+        }
+
+        var effect = Current.Save(_edit);
+        _saved = Current.Load();
+        _edit = Clone(_saved);
+        _firstRun = false;
+
+        switch (effect)
+        {
+            case SettingsEffect.Refresh when Latest.Run is null:
+                // Nothing to show yet: start the first refresh and go to the results, where its progress shows.
+                Refresh.RequestRefresh();
+                Navigation.NavigateTo("");
+                break;
+            case SettingsEffect.Refresh:
+                Say("Saved. The results shown are for your previous username or country; refresh to see new ones.");
+                _offerRefresh = true;
+                break;
+            case SettingsEffect.Regroup:
+                Say("Saved. Your results have been regrouped with these settings.");
+                break;
+            default:
+                Say("Saved.");
+                break;
+        }
+    }
+
+    private bool UsernameChanged =>
+        !string.Equals(_edit.Letterboxd.Username.Trim(), _saved.Letterboxd.Username, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>What's wrong with these settings, in plain words, or null if nothing.</summary>
+    private static string? Check(AppSettings s) =>
+        string.IsNullOrWhiteSpace(s.Letterboxd.Username) ? "Enter your Letterboxd username."
+        : s.JustWatch.ExpiringSoonDays is < 1 or > 365 ? "\"Leaving soon\" must be between 1 and 365 days."
+        : s.Cache.ExpiryDays is < 1 or > 30 ? "Keep JustWatch's answers for between 1 and 30 days."
+        : null;
+
+    private async Task<string?> CheckUsername(string username) => await Catalog.CheckUsername(username) switch
+    {
+        WatchlistCheck.Found => null,
+        WatchlistCheck.NoSuchUser => $"There's no Letterboxd user called \"{username}\". Check the spelling.",
+        WatchlistCheck.EmptyOrPrivate => $"No films show on {username}'s watchlist. If it isn't empty it may be private: make it public on Letterboxd.",
+        _ => $"Couldn't reach Letterboxd to check \"{username}\". Check your internet connection and try again.",
+    };
+
+    private void Cancel()
+    {
+        _edit = Clone(_saved);
+        _message = null;
+    }
+
+    private void RefreshNow()
+    {
+        Refresh.RequestRefresh();
+        Navigation.NavigateTo("");
+    }
+
+    private void OnLeaving(LocationChangingContext context)
+    {
+        if (!Dirty) return;
+        _leavingTo = context.TargetLocation;
+        context.PreventNavigation();
+    }
+
+    private void LeaveWithoutSaving()
+    {
+        var target = _leavingTo ?? "";
+        _edit = Clone(_saved);
+        _leavingTo = null;
+        Navigation.NavigateTo(target);
+    }
+
+    private void Say(string message, bool error = false)
+    {
+        _message = message;
+        _messageIsError = error;
+    }
+
+    private static AppSettings Clone(AppSettings s) => JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(s, Json), Json)!;
+}

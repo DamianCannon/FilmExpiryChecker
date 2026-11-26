@@ -7,6 +7,22 @@ namespace FilmExpiryChecker.Letterboxd;
 /// <summary>One watchlist page read: its number, the films on it, and the films found so far.</summary>
 public readonly record struct WatchlistPage(int Page, int FilmsOnPage, int FilmsSoFar);
 
+/// <summary>What a quick look at a user's watchlist found, for checking a username before it's saved.</summary>
+public enum WatchlistCheck
+{
+    /// <summary>A public watchlist with films on it.</summary>
+    Found,
+
+    /// <summary>No such user (Letterboxd answers 403 or 404).</summary>
+    NoSuchUser,
+
+    /// <summary>The user exists but no films show: the watchlist is private or empty.</summary>
+    EmptyOrPrivate,
+
+    /// <summary>Letterboxd couldn't be reached, or answered with an error.</summary>
+    Unreachable,
+}
+
 public class LetterboxdScraper
 {
     private readonly HttpClient _http;
@@ -60,6 +76,29 @@ public class LetterboxdScraper
         }
 
         return films;
+    }
+
+    /// <summary>Looks at the first page of the watchlist only, to check the username is right before saving it.</summary>
+    public async Task<WatchlistCheck> CheckWatchlistAsync(CancellationToken ct = default)
+    {
+        HttpResponseMessage response;
+        try
+        {
+            response = await _http.GetAsync($"https://letterboxd.com/{_username}/watchlist/page/1/", ct);
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning("Checking {User}'s watchlist: {Message}", _username, ex.Message);
+            return WatchlistCheck.Unreachable;
+        }
+
+        if (response.StatusCode is System.Net.HttpStatusCode.NotFound or System.Net.HttpStatusCode.Forbidden)
+            return WatchlistCheck.NoSuchUser;
+        if (!response.IsSuccessStatusCode)
+            return WatchlistCheck.Unreachable;
+
+        var html = await response.Content.ReadAsStringAsync(ct);
+        return ParseFilmsFromPage(html).Count > 0 ? WatchlistCheck.Found : WatchlistCheck.EmptyOrPrivate;
     }
 
     private static bool HasNextPage(string html)
