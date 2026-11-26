@@ -2,7 +2,8 @@
 @implements IDisposable
 @inject IRefreshStatus Refresh
 
-<button class="refresh-button" type="button" disabled="@_running" @onclick="Start">
+@* Greyed out until the page is live: the first HTML is shown before it can respond, and a click then is lost. *@
+<button class="refresh-button" type="button" disabled="@(_running || !RendererInfo.IsInteractive)" @onclick="Start">
     @(_running ? "Refreshing…" : "Refresh")
 </button>
 

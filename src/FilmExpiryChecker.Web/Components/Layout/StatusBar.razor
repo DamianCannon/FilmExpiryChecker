@@ -7,7 +7,7 @@
 @inject DataFolder Data
 @inject TimeProvider Time
 
-<div class="status" role="status">
+<div class="status @_kind" role="status">
     <span class="status-text">@_line.Text</span>
     @if (_line.Progress is double progress)
     {
@@ -28,6 +28,7 @@
     private static readonly TimeSpan RenderAtMostEvery = TimeSpan.FromMilliseconds(150);
 
     private StatusLine _line = new(string.Empty);
+    private string _kind = "status--idle";
     private string? _summaryFor;
     private ResultsSummary? _summary;
     private int _renderPending;
@@ -71,7 +72,15 @@
         }
 
         var usernameSet = !string.IsNullOrWhiteSpace(SettingsStore.Load(Data.SettingsFile).Letterboxd.Username);
-        _line = StatusText.For(Refresh.State, _summary, usernameSet, Time.GetUtcNow(), Time.LocalTimeZone);
+        var state = Refresh.State;
+        _line = StatusText.For(state, _summary, usernameSet, Time.GetUtcNow(), Time.LocalTimeZone);
+        // A tinted band while refreshing or after a failure, so it catches the eye.
+        _kind = state switch
+        {
+            RefreshState.Running => "status--running",
+            RefreshState.Failed => "status--failed",
+            _ => "status--idle",
+        };
     }
 
     private ResultsSummary Summarise(SavedRun run)

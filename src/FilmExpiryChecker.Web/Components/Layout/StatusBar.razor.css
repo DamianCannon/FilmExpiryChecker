@@ -1,22 +1,47 @@
 .status {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 1rem;
     flex-wrap: wrap;
+    padding: 0.75rem 1.5rem;
+    font-size: 15px;
+    min-height: 1.6rem;
+    border-top: 3px solid transparent;
+}
+
+.status--idle {
+    color: var(--muted);
+}
+
+/* Refreshing: an amber band, so a refresh under way is hard to miss. */
+.status--running {
+    background: #fff4e0;
+    border-top-color: #f4a261;
+    color: var(--text);
+    font-weight: 600;
+}
+
+/* Failed: a red band. */
+.status--failed {
+    background: #fdecee;
+    border-top-color: var(--accent);
+    color: #8a1c26;
+    font-weight: 600;
 }
 
 .status-progress {
-    width: 12rem;
-    height: 0.6rem;
+    width: 20rem;
+    max-width: 40vw;
+    height: 0.9rem;
     accent-color: var(--accent);
 }
 
 .status-retry {
-    background: none;
-    border: 1px solid var(--accent);
-    color: var(--accent);
+    background: var(--accent);
+    border: none;
+    color: var(--paper);
     border-radius: 4px;
-    padding: 0.1rem 0.7rem;
+    padding: 0.3rem 1rem;
     font: inherit;
     cursor: pointer;
 }

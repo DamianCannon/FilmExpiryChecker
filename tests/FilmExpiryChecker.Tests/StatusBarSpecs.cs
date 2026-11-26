@@ -96,6 +96,19 @@ public sealed class StatusBarSpecs : IDisposable
     }
 
     [Fact]
+    public async Task The_bar_is_marked_out_while_refreshing_and_after_a_failure()
+    {
+        var bar = _context.Render<StatusBar>();
+        Assert.Contains("status--idle", bar.Find(".status").ClassName);
+
+        await _refresh.Push(new RefreshState.Running(RunStep.CheckingFilms, 1, 2, Now, null));
+        bar.WaitForAssertion(() => Assert.Contains("status--running", bar.Find(".status").ClassName));
+
+        await _refresh.Push(new RefreshState.Failed("Couldn't reach Letterboxd. Check your internet connection and try again.", Now, null));
+        bar.WaitForAssertion(() => Assert.Contains("status--failed", bar.Find(".status").ClassName));
+    }
+
+    [Fact]
     public async Task A_step_of_unknown_length_shows_a_bar_with_no_value()
     {
         var bar = _context.Render<StatusBar>();

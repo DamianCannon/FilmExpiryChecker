@@ -56,6 +56,16 @@ public sealed class WebAppSpecs : IDisposable
     }
 
     [Fact]
+    public async Task The_refresh_button_is_greyed_out_until_the_page_is_live()
+    {
+        // The first HTML is shown before the page can respond to clicks; a click then would be lost.
+        var html = await _app.CreateClient().GetStringAsync("/");
+
+        var button = Regex.Match(html, "<button[^>]*class=\"refresh-button\"[^>]*>").Value;
+        Assert.Contains("disabled", button);
+    }
+
+    [Fact]
     public async Task Starting_the_app_makes_the_data_folder_ready()
     {
         await _app.CreateClient().GetAsync("/");

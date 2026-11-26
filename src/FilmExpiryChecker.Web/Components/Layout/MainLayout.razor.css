@@ -70,12 +70,9 @@
 .status-bar {
     position: sticky;
     bottom: 0;
-    padding: 0.4rem 1.5rem;
     background: var(--panel);
     border-top: 1px solid var(--line);
-    font-size: 0.85rem;
-    color: var(--muted);
-    min-height: 1.6rem;
+    box-shadow: 0 -2px 6px rgba(0, 0, 0, 0.06);
 }
 
 #blazor-error-ui {
