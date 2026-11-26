@@ -18,26 +18,29 @@ public class CsvReporter
             HasHeaderRecord = true
         };
 
-        using var writer = new StreamWriter(path);
-        using var csv = new CsvWriter(writer, config);
-
-        csv.WriteHeader<CsvRow>();
-        csv.NextRecord();
-
-        foreach (var r in results)
+        Storage.SafeFile.Write(path, stream =>
         {
-            csv.WriteRecord(new CsvRow
-            {
-                Title = r.Film.Title,
-                Year = r.Film.Year?.ToString() ?? "",
-                Category = r.CategoryDisplay,
-                MyServices = r.MyServicesDisplay,
-                OtherServices = r.OtherServicesDisplay,
-                ExpiryDate = r.ExpiryDisplay,
-                DaysRemaining = r.DaysUntilExpiry?.ToString() ?? ""
-            });
+            using var writer = new StreamWriter(stream, leaveOpen: true);
+            using var csv = new CsvWriter(writer, config);
+
+            csv.WriteHeader<CsvRow>();
             csv.NextRecord();
-        }
+
+            foreach (var r in results)
+            {
+                csv.WriteRecord(new CsvRow
+                {
+                    Title = r.Film.Title,
+                    Year = r.Film.Year?.ToString() ?? "",
+                    Category = r.CategoryDisplay,
+                    MyServices = r.MyServicesDisplay,
+                    OtherServices = r.OtherServicesDisplay,
+                    ExpiryDate = r.ExpiryDisplay,
+                    DaysRemaining = r.DaysUntilExpiry?.ToString() ?? ""
+                });
+                csv.NextRecord();
+            }
+        });
 
         return path;
     }

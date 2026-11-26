@@ -95,7 +95,7 @@ public sealed class CheckRunnerSpecs : IDisposable
     {
         var progress = new RecordedProgress<RunProgress>();
 
-        await new CheckRunner(new HttpClient(Sites()), Data).RunAsync(Settings(), progress);
+        await new CheckRunner(new HttpClient(Sites()), Data, time: InstantWaits.Instance).RunAsync(Settings(), progress);
 
         var steps = progress.Reports.Select(p => p.Step).Distinct();
         Assert.Equal(new[] { RunStep.ReadingWatchlist, RunStep.FetchingServices, RunStep.CheckingFilms, RunStep.Saving }, steps);
@@ -106,7 +106,7 @@ public sealed class CheckRunnerSpecs : IDisposable
     {
         var progress = new RecordedProgress<RunProgress>();
 
-        await new CheckRunner(new HttpClient(Sites()), Data).RunAsync(Settings(), progress);
+        await new CheckRunner(new HttpClient(Sites()), Data, time: InstantWaits.Instance).RunAsync(Settings(), progress);
 
         var pages = Steps(progress, RunStep.ReadingWatchlist);
         Assert.Equal(new[] { 0, 1, 2 }, pages.Select(p => p.Done));
@@ -118,7 +118,7 @@ public sealed class CheckRunnerSpecs : IDisposable
     {
         var progress = new RecordedProgress<RunProgress>();
 
-        await new CheckRunner(new HttpClient(Sites()), Data).RunAsync(Settings(), progress);
+        await new CheckRunner(new HttpClient(Sites()), Data, time: InstantWaits.Instance).RunAsync(Settings(), progress);
 
         var checking = Steps(progress, RunStep.CheckingFilms);
         Assert.Equal(new[] { 0, 1, 2, 3, 4, 5 }, checking.Select(p => p.Done));
@@ -128,7 +128,7 @@ public sealed class CheckRunnerSpecs : IDisposable
     [Fact]
     public async Task A_completed_run_returns_every_film_grouped()
     {
-        var result = await new CheckRunner(new HttpClient(Sites()), Data).RunAsync(Settings());
+        var result = await new CheckRunner(new HttpClient(Sites()), Data, time: InstantWaits.Instance).RunAsync(Settings());
 
         Assert.Equal(RunOutcome.Completed, result.Outcome);
         Assert.Equal(5, result.Films.Count);
@@ -139,7 +139,7 @@ public sealed class CheckRunnerSpecs : IDisposable
     [Fact]
     public async Task A_completed_run_saves_what_it_fetched_to_the_cache()
     {
-        await new CheckRunner(new HttpClient(Sites()), Data).RunAsync(Settings());
+        await new CheckRunner(new HttpClient(Sites()), Data, time: InstantWaits.Instance).RunAsync(Settings());
 
         var cache = new JustWatchCache(Data.JustWatchCacheFile, expiryDays: 7);
         Assert.All(FilmIds, id => Assert.True(cache.TryGet(id, out _), $"film {id} not cached"));
@@ -151,7 +151,7 @@ public sealed class CheckRunnerSpecs : IDisposable
         var http = Sites((request, _) =>
             request.RequestUri!.Host == "letterboxd.com" ? FakeHttp.NotFound() : null);
 
-        var result = await new CheckRunner(new HttpClient(http), Data).RunAsync(Settings());
+        var result = await new CheckRunner(new HttpClient(http), Data, time: InstantWaits.Instance).RunAsync(Settings());
 
         Assert.Equal(RunOutcome.EmptyWatchlist, result.Outcome);
         Assert.DoesNotContain(http.RequestedUrls, u => u.StartsWith(JustWatchApi));
@@ -171,7 +171,7 @@ public sealed class CheckRunnerSpecs : IDisposable
         });
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            new CheckRunner(new HttpClient(http), Data).RunAsync(Settings(), progress, _cancel.Token));
+            new CheckRunner(new HttpClient(http), Data, time: InstantWaits.Instance).RunAsync(Settings(), progress, _cancel.Token));
 
         Assert.Empty(Steps(progress, RunStep.FetchingServices));
     }
@@ -197,7 +197,7 @@ public sealed class CheckRunnerSpecs : IDisposable
         });
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            new CheckRunner(new HttpClient(http), Data).RunAsync(Settings(), progress, _cancel.Token));
+            new CheckRunner(new HttpClient(http), Data, time: InstantWaits.Instance).RunAsync(Settings(), progress, _cancel.Token));
 
         Assert.Equal(1, Steps(progress, RunStep.CheckingFilms).Max(p => p.Done));
         Assert.Empty(Steps(progress, RunStep.Saving));
@@ -219,9 +219,58 @@ public sealed class CheckRunnerSpecs : IDisposable
         http = Sites();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            new CheckRunner(new HttpClient(http), Data).RunAsync(Settings(), progress, _cancel.Token));
+            new CheckRunner(new HttpClient(http), Data, time: InstantWaits.Instance).RunAsync(Settings(), progress, _cancel.Token));
 
         Assert.Equal(requestsAtCancel, http.RequestedUrls.Count);
+    }
+
+    // ── Saving as it goes ───────────────────────────────────────────────────────
+
+    /// <summary>One watchlist page of <paramref name="count"/> made-up films, IDs 1001 upwards, and no next page.</summary>
+    private static string LongWatchlist(int count) =>
+        "<html><body><ul>" +
+        string.Concat(Enumerable.Range(1, count).Select(i =>
+            $"""<li class="griditem"><div class="react-component" data-component-class="LazyPoster" data-item-name="Made Up Film {i} (2000)" data-item-slug="made-up-film-{i}" data-postered-identifier='{"{"}&quot;uid&quot;:&quot;film:{1000 + i}&quot;{"}"}'></div></li>""")) +
+        "</ul></body></html>";
+
+    private FakeHttp SitesWithLongWatchlist(int count) => Sites((request, _) =>
+        request.RequestUri!.ToString() == Watchlist + "1/" ? FakeHttp.Html(LongWatchlist(count)) : null);
+
+    private int FilmsInSavedCache() =>
+        Enumerable.Range(1001, 40).Count(id => new JustWatchCache(Data.JustWatchCacheFile, 7).TryGet(id.ToString(), out _));
+
+    [Fact]
+    public async Task The_cache_is_saved_every_25_films_during_a_run()
+    {
+        var savedPartWay = -1;
+        var progress = new RecordedProgress<RunProgress>(p =>
+        {
+            if (p.Step == RunStep.CheckingFilms && p.Done == 30) savedPartWay = FilmsInSavedCache();
+        });
+
+        await new CheckRunner(new HttpClient(SitesWithLongWatchlist(40)), Data, time: InstantWaits.Instance)
+            .RunAsync(Settings(), progress);
+
+        Assert.True(savedPartWay >= 25, $"only {savedPartWay} films were saved by film 30");
+    }
+
+    [Fact]
+    public async Task A_run_cancelled_after_30_films_keeps_them_and_the_next_run_skips_them()
+    {
+        var progress = new RecordedProgress<RunProgress>(p =>
+        {
+            if (p.Step == RunStep.CheckingFilms && p.Done == 30) _cancel.Cancel();
+        });
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            new CheckRunner(new HttpClient(SitesWithLongWatchlist(40)), Data, time: InstantWaits.Instance)
+                .RunAsync(Settings(), progress, _cancel.Token));
+
+        Assert.Equal(30, FilmsInSavedCache());
+
+        var http = SitesWithLongWatchlist(40);
+        await new CheckRunner(new HttpClient(http), Data, time: InstantWaits.Instance).RunAsync(Settings());
+        var searches = http.RequestBodies.Count(b => b.Contains("GetTitleOffers"));
+        Assert.Equal(10, searches);
     }
 
     // ── No console in Core ──────────────────────────────────────────────────────

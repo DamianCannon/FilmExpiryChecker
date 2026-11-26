@@ -12,12 +12,14 @@ public class LetterboxdScraper
     private readonly HttpClient _http;
     private readonly string _username;
     private readonly ILogger _logger;
+    private readonly TimeProvider _time;
 
-    public LetterboxdScraper(HttpClient http, string username, ILogger? logger = null)
+    public LetterboxdScraper(HttpClient http, string username, ILogger? logger = null, TimeProvider? time = null)
     {
         _http = http;
         _username = username;
         _logger = logger ?? NullLogger.Instance;
+        _time = time ?? TimeProvider.System;
     }
 
     public async Task<List<WatchlistFilm>> GetWatchlistAsync(
@@ -53,7 +55,7 @@ public class LetterboxdScraper
                 break;
 
             page++;
-            await Task.Delay(300, ct);
+            await Task.Delay(TimeSpan.FromMilliseconds(300), _time, ct);
         }
 
         return films;
