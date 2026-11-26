@@ -1,4 +1,5 @@
 using System.Text.Json;
+using FilmExpiryChecker.Storage;
 
 namespace FilmExpiryChecker.Letterboxd;
 
@@ -21,6 +22,7 @@ public class ImdbIdCache
 
     private void Load()
     {
+        SafeFile.DiscardLeftover(_filePath);
         if (!File.Exists(_filePath)) return;
         try
         {
@@ -30,12 +32,7 @@ public class ImdbIdCache
         catch { }
     }
 
-    public void Save()
-    {
-        var dir = Path.GetDirectoryName(_filePath);
-        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-        File.WriteAllText(_filePath, JsonSerializer.Serialize(_store, JsonOptions));
-    }
+    public void Save() => SafeFile.WriteAllText(_filePath, JsonSerializer.Serialize(_store, JsonOptions));
 
     /// <summary>Returns true if we have a result for this slug (even if it is null).</summary>
     public bool TryGet(string slug, out string? imdbId) => _store.TryGetValue(slug, out imdbId);

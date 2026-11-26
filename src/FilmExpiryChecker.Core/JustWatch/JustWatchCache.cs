@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using FilmExpiryChecker.Storage;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace FilmExpiryChecker.JustWatch;
@@ -27,6 +28,7 @@ public class JustWatchCache
 
     private void Load()
     {
+        SafeFile.DiscardLeftover(_filePath);
         if (!File.Exists(_filePath))
         {
             _store = new Dictionary<string, CachedFilmData>();
@@ -46,15 +48,7 @@ public class JustWatchCache
         }
     }
 
-    public void Save()
-    {
-        var dir = Path.GetDirectoryName(_filePath);
-        if (!string.IsNullOrEmpty(dir))
-            Directory.CreateDirectory(dir);
-
-        var json = JsonSerializer.Serialize(_store, JsonOptions);
-        File.WriteAllText(_filePath, json);
-    }
+    public void Save() => SafeFile.WriteAllText(_filePath, JsonSerializer.Serialize(_store, JsonOptions));
 
     /// <summary>Returns true if a valid, non-expired entry exists for this film ID.</summary>
     public bool TryGet(string filmId, out CachedFilmData? data)

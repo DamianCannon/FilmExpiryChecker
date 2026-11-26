@@ -117,11 +117,14 @@ public static class SettingsStore
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true, PropertyNameCaseInsensitive = true };
 
     /// <summary>The settings in the file, with defaults for anything missing. Unknown old fields are ignored.</summary>
-    public static AppSettings Load(string path) =>
-        JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path), Json) ?? new AppSettings();
+    public static AppSettings Load(string path)
+    {
+        SafeFile.DiscardLeftover(path);
+        return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path), Json) ?? new AppSettings();
+    }
 
     public static void Save(string path, AppSettings settings) =>
-        File.WriteAllText(path, JsonSerializer.Serialize(settings, Json));
+        SafeFile.WriteAllText(path, JsonSerializer.Serialize(settings, Json));
 }
 
 /// <summary>Where the command line kept its files before the data folder existed.</summary>

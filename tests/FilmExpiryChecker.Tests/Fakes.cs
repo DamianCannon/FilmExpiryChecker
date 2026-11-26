@@ -9,6 +9,28 @@ internal sealed class FixedClock(DateTimeOffset now) : TimeProvider
     public override DateTimeOffset GetUtcNow() => now;
 }
 
+/// <summary>
+/// Real time, except that every wait (the polite pauses between requests) ends at once, so tests don't sit idle.
+/// </summary>
+internal sealed class InstantWaits : TimeProvider
+{
+    public static readonly InstantWaits Instance = new();
+
+    public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+    {
+        if (dueTime != Timeout.InfiniteTimeSpan)
+            ThreadPool.UnsafeQueueUserWorkItem(_ => callback(state), null);
+        return new Fired();
+    }
+
+    private sealed class Fired : ITimer
+    {
+        public bool Change(TimeSpan dueTime, TimeSpan period) => true;
+        public void Dispose() { }
+        public ValueTask DisposeAsync() => default;
+    }
+}
+
 /// <summary>Stands in for the network: answers each request from a function and records what was asked.</summary>
 internal sealed class FakeHttp(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
 {

@@ -21,7 +21,7 @@ public class HtmlReporter
         }
 
         sb.AppendLine(HtmlFooter());
-        File.WriteAllText(path, sb.ToString());
+        Storage.SafeFile.WriteAllText(path, sb.ToString());
         return path;
     }
 

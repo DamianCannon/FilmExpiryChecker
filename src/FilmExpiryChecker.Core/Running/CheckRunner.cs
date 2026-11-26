@@ -55,11 +55,15 @@ public sealed class CheckRunner(
     private readonly ILoggerFactory _loggers = loggerFactory ?? NullLoggerFactory.Instance;
     private readonly TimeProvider _time = time ?? TimeProvider.System;
 
+    /// <summary>The cache is saved after every this many films.</summary>
+    public const int SaveEvery = 25;
+
     public async Task<RunResult> RunAsync(
         AppSettings settings, IProgress<RunProgress>? progress = null, CancellationToken ct = default)
     {
         var log = _loggers.CreateLogger<CheckRunner>();
-        var scraper = new LetterboxdScraper(http, settings.Letterboxd.Username, _loggers.CreateLogger<LetterboxdScraper>());
+        var scraper = new LetterboxdScraper(
+            http, settings.Letterboxd.Username, _loggers.CreateLogger<LetterboxdScraper>(), _time);
 
         // Slug → IMDb ID, for matching films whose titles differ between Letterboxd and JustWatch.
         var imdbCache = new ImdbIdCache(data.ImdbCacheFile);
@@ -67,7 +71,7 @@ public sealed class CheckRunner(
         async Task<string?> ResolveImdbId(string slug, CancellationToken token)
         {
             if (imdbCache.TryGet(slug, out var cached)) return cached;
-            await Task.Delay(300, token);
+            await Task.Delay(TimeSpan.FromMilliseconds(300), _time, token);
             var id = await scraper.FetchImdbIdAsync(slug, token);
             imdbCache.Set(slug, id);
             imdbCache.Save();
@@ -77,7 +81,7 @@ public sealed class CheckRunner(
         var cache = new JustWatchCache(
             data.JustWatchCacheFile, settings.Cache.ExpiryDays, _loggers.CreateLogger<JustWatchCache>());
         var client = new JustWatchClient(
-            http, settings.JustWatch.Region, cache, ResolveImdbId, _loggers.CreateLogger<JustWatchClient>());
+            http, settings.JustWatch.Region, cache, ResolveImdbId, _loggers.CreateLogger<JustWatchClient>(), _time);
 
         // 1. The watchlist
         progress?.Report(new RunProgress(RunStep.ReadingWatchlist));
@@ -101,11 +105,26 @@ public sealed class CheckRunner(
         progress?.Report(new RunProgress(RunStep.CheckingFilms, 0, watchlist.Count));
 
         var offers = new Dictionary<string, List<Offer>?>();
-        for (var i = 0; i < watchlist.Count; i++)
+        try
         {
-            var film = watchlist[i];
-            offers[film.FilmId] = await client.GetOffersAsync(film, ct);
-            progress?.Report(new RunProgress(RunStep.CheckingFilms, i + 1, watchlist.Count));
+            for (var i = 0; i < watchlist.Count; i++)
+            {
+                var film = watchlist[i];
+                offers[film.FilmId] = await client.GetOffersAsync(film, ct);
+
+                // Saved as it goes, so a run that is killed outright still keeps most of its work.
+                if ((i + 1) % SaveEvery == 0)
+                    cache.Save();
+
+                progress?.Report(new RunProgress(RunStep.CheckingFilms, i + 1, watchlist.Count));
+            }
+        }
+        catch
+        {
+            // Cancelled or failed part-way: keep every film fetched so far, so the next run needn't fetch it again.
+            cache.Save();
+            log.LogInformation("Stopped part-way; the cache keeps the films checked so far.");
+            throw;
         }
 
         // 4. Save what was fetched

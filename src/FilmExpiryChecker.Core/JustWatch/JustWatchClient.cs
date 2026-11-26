@@ -13,6 +13,7 @@ public class JustWatchClient
     private readonly JustWatchCache _cache;
     private readonly Func<string, CancellationToken, Task<string?>>? _imdbIdResolver;
     private readonly ILogger _logger;
+    private readonly TimeProvider _time;
 
     private const string ApiUrl = "https://apis.justwatch.com/graphql";
     private const int RequestDelayMs = 500;
@@ -28,13 +29,15 @@ public class JustWatchClient
         string region,
         JustWatchCache cache,
         Func<string, CancellationToken, Task<string?>>? imdbIdResolver = null,
-        ILogger? logger = null)
+        ILogger? logger = null,
+        TimeProvider? time = null)
     {
         _http = http;
         _region = region;
         _cache = cache;
         _imdbIdResolver = imdbIdResolver;
         _logger = logger ?? NullLogger.Instance;
+        _time = time ?? TimeProvider.System;
     }
 
     // ── Provider listing ─────────────────────────────────────────────────────
@@ -88,7 +91,7 @@ public class JustWatchClient
             return cached!.Offers;
 
         // Rate limiting
-        await Task.Delay(RequestDelayMs, ct);
+        await Task.Delay(TimeSpan.FromMilliseconds(RequestDelayMs), _time, ct);
 
         var offers = await FetchOffersFromApiAsync(film, ct);
 
