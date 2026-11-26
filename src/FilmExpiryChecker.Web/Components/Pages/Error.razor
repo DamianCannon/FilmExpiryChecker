@@ -1,0 +1,25 @@
+﻿@page "/Error"
+@using System.Diagnostics
+
+<PageTitle>Film Expiry Checker — Error</PageTitle>
+
+<h1>Something went wrong.</h1>
+<p>An error occurred while showing this page. Details are in the log.</p>
+
+@if (ShowRequestId)
+{
+    <p>
+        <strong>Request ID:</strong> <code>@RequestId</code>
+    </p>
+}
+
+@code{
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    private string? RequestId { get; set; }
+    private bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
+
+    protected override void OnInitialized() =>
+        RequestId = Activity.Current?.Id ?? HttpContext?.TraceIdentifier;
+}
