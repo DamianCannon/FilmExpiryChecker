@@ -6,6 +6,7 @@ using FilmExpiryChecker.JustWatch;
 using FilmExpiryChecker.Letterboxd;
 using FilmExpiryChecker.Reporting;
 using FilmExpiryChecker.Running;
+using FilmExpiryChecker.Storage;
 
 namespace FilmExpiryChecker.Tests;
 
@@ -24,6 +25,8 @@ public sealed class CheckRunnerSpecs : IDisposable
     private readonly TempFolder _temp = new();
     private readonly CancellationTokenSource _cancel = new();
 
+    private DataFolder Data => new(_temp.Path);
+
     public void Dispose()
     {
         _cancel.Dispose();
@@ -34,7 +37,7 @@ public sealed class CheckRunnerSpecs : IDisposable
     {
         Letterboxd = { Username = "example-user" },
         JustWatch = { Region = "GB", MyServices = { "8" }, ExpiringSoonDays = 60 },
-        Cache = { ExpiryDays = 7, CacheFilePath = _temp.File("cache.json") },
+        Cache = { ExpiryDays = 7 },
     };
 
     /// <summary>Answers like the real sites. <paramref name="intercept"/> may answer a request first (or throw).</summary>
@@ -92,7 +95,7 @@ public sealed class CheckRunnerSpecs : IDisposable
     {
         var progress = new RecordedProgress<RunProgress>();
 
-        await new CheckRunner(new HttpClient(Sites())).RunAsync(Settings(), progress);
+        await new CheckRunner(new HttpClient(Sites()), Data).RunAsync(Settings(), progress);
 
         var steps = progress.Reports.Select(p => p.Step).Distinct();
         Assert.Equal(new[] { RunStep.ReadingWatchlist, RunStep.FetchingServices, RunStep.CheckingFilms, RunStep.Saving }, steps);
@@ -103,7 +106,7 @@ public sealed class CheckRunnerSpecs : IDisposable
     {
         var progress = new RecordedProgress<RunProgress>();
 
-        await new CheckRunner(new HttpClient(Sites())).RunAsync(Settings(), progress);
+        await new CheckRunner(new HttpClient(Sites()), Data).RunAsync(Settings(), progress);
 
         var pages = Steps(progress, RunStep.ReadingWatchlist);
         Assert.Equal(new[] { 0, 1, 2 }, pages.Select(p => p.Done));
@@ -115,7 +118,7 @@ public sealed class CheckRunnerSpecs : IDisposable
     {
         var progress = new RecordedProgress<RunProgress>();
 
-        await new CheckRunner(new HttpClient(Sites())).RunAsync(Settings(), progress);
+        await new CheckRunner(new HttpClient(Sites()), Data).RunAsync(Settings(), progress);
 
         var checking = Steps(progress, RunStep.CheckingFilms);
         Assert.Equal(new[] { 0, 1, 2, 3, 4, 5 }, checking.Select(p => p.Done));
@@ -125,7 +128,7 @@ public sealed class CheckRunnerSpecs : IDisposable
     [Fact]
     public async Task A_completed_run_returns_every_film_grouped()
     {
-        var result = await new CheckRunner(new HttpClient(Sites())).RunAsync(Settings());
+        var result = await new CheckRunner(new HttpClient(Sites()), Data).RunAsync(Settings());
 
         Assert.Equal(RunOutcome.Completed, result.Outcome);
         Assert.Equal(5, result.Films.Count);
@@ -136,9 +139,9 @@ public sealed class CheckRunnerSpecs : IDisposable
     [Fact]
     public async Task A_completed_run_saves_what_it_fetched_to_the_cache()
     {
-        await new CheckRunner(new HttpClient(Sites())).RunAsync(Settings());
+        await new CheckRunner(new HttpClient(Sites()), Data).RunAsync(Settings());
 
-        var cache = new JustWatchCache(_temp.File("cache.json"), expiryDays: 7);
+        var cache = new JustWatchCache(Data.JustWatchCacheFile, expiryDays: 7);
         Assert.All(FilmIds, id => Assert.True(cache.TryGet(id, out _), $"film {id} not cached"));
     }
 
@@ -148,7 +151,7 @@ public sealed class CheckRunnerSpecs : IDisposable
         var http = Sites((request, _) =>
             request.RequestUri!.Host == "letterboxd.com" ? FakeHttp.NotFound() : null);
 
-        var result = await new CheckRunner(new HttpClient(http)).RunAsync(Settings());
+        var result = await new CheckRunner(new HttpClient(http), Data).RunAsync(Settings());
 
         Assert.Equal(RunOutcome.EmptyWatchlist, result.Outcome);
         Assert.DoesNotContain(http.RequestedUrls, u => u.StartsWith(JustWatchApi));
@@ -168,7 +171,7 @@ public sealed class CheckRunnerSpecs : IDisposable
         });
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            new CheckRunner(new HttpClient(http)).RunAsync(Settings(), progress, _cancel.Token));
+            new CheckRunner(new HttpClient(http), Data).RunAsync(Settings(), progress, _cancel.Token));
 
         Assert.Empty(Steps(progress, RunStep.FetchingServices));
     }
@@ -177,11 +180,11 @@ public sealed class CheckRunnerSpecs : IDisposable
     public async Task Cancelling_while_a_film_is_searched_stops_the_run_there()
     {
         // Every other film is already cached, so a run that wrongly carried on would race to the end.
-        var cache = new JustWatchCache(_temp.File("cache.json"), expiryDays: 7);
+        var cache = new JustWatchCache(Data.JustWatchCacheFile, expiryDays: 7);
         foreach (var id in FilmIds.Where(id => id != "1284043"))
             cache.Set(id, new List<Offer>());
         cache.Save();
-        var imdb = new ImdbIdCache(_temp.File("imdb-ids.json"));
+        var imdb = new ImdbIdCache(Data.ImdbCacheFile);
         imdb.Set("its-never-over-jeff-buckley", null);
         imdb.Save();
 
@@ -194,7 +197,7 @@ public sealed class CheckRunnerSpecs : IDisposable
         });
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            new CheckRunner(new HttpClient(http)).RunAsync(Settings(), progress, _cancel.Token));
+            new CheckRunner(new HttpClient(http), Data).RunAsync(Settings(), progress, _cancel.Token));
 
         Assert.Equal(1, Steps(progress, RunStep.CheckingFilms).Max(p => p.Done));
         Assert.Empty(Steps(progress, RunStep.Saving));
@@ -216,7 +219,7 @@ public sealed class CheckRunnerSpecs : IDisposable
         http = Sites();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            new CheckRunner(new HttpClient(http)).RunAsync(Settings(), progress, _cancel.Token));
+            new CheckRunner(new HttpClient(http), Data).RunAsync(Settings(), progress, _cancel.Token));
 
         Assert.Equal(requestsAtCancel, http.RequestedUrls.Count);
     }
