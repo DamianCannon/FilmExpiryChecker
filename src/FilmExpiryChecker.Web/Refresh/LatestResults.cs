@@ -32,6 +32,20 @@ public sealed class LatestResults(DataFolder data)
         }
     }
 
+    /// <summary>Reads the newest run again (after one is deleted), and says so if it changed.</summary>
+    public void Reload()
+    {
+        string? before, after;
+        lock (_gate)
+        {
+            before = _run?.Id;
+            _run = new RunStore(data).Latest();
+            _loaded = true;
+            after = _run?.Id;
+        }
+        if (before != after) Changed?.Invoke();
+    }
+
     public void Replace(SavedRun run)
     {
         lock (_gate)

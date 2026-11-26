@@ -1,0 +1,42 @@
+@page "/history/{Id}"
+@using System.Globalization
+@using FilmExpiryChecker.Storage
+@using FilmExpiryChecker.Web.Components.Results
+@using FilmExpiryChecker.Web.History
+@using FilmExpiryChecker.Web.Settings
+@inject RunHistory History
+@inject CurrentSettings Current
+@inject TimeProvider Time
+
+<PageTitle>Film Expiry Checker — @Heading</PageTitle>
+
+@if (_run is null)
+{
+    <h1>Not found</h1>
+    <p>There's no saved run here; it may have been deleted. <a href="history">Back to History</a>.</p>
+}
+else
+{
+    <div class="past-run">
+        <h1>@Heading</h1>
+        <a href="history">Back to History</a>
+        <a href="download/@(_run.Id).csv" download>Download CSV</a>
+    </div>
+    <ResultsView Run="_run" MyServices="_settings.JustWatch.MyServices" ExpiringSoonDays="_settings.JustWatch.ExpiringSoonDays" />
+}
+
+@code {
+    [Parameter] public string Id { get; set; } = string.Empty;
+
+    private SavedRun? _run;
+    private Config.AppSettings _settings = new();
+
+    protected override void OnParametersSet()
+    {
+        _run = History.Load(Id);
+        _settings = Current.Load();
+    }
+
+    private string Heading => _run is null ? "Not found"
+        : "Results from " + TimeZoneInfo.ConvertTime(_run.RanAt, Time.LocalTimeZone).ToString("d MMM yyyy", CultureInfo.InvariantCulture);
+}

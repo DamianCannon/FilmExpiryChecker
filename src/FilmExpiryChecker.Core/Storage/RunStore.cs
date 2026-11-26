@@ -89,6 +89,7 @@ public sealed class RunStore(DataFolder data)
     /// <summary>The run with this id, or null if there is none or it can't be read.</summary>
     public SavedRun? Load(string id)
     {
+        if (id.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || id.Contains("..")) return null;
         var path = PathOf(id);
         if (!File.Exists(path)) return null;
         try
@@ -99,6 +100,16 @@ public sealed class RunStore(DataFolder data)
         {
             return null;
         }
+    }
+
+    /// <summary>Deletes the run with this id. Returns whether there was one.</summary>
+    public bool Delete(string id)
+    {
+        if (id.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || id.Contains("..")) return false;
+        var path = PathOf(id);
+        if (!File.Exists(path)) return false;
+        File.Delete(path);
+        return true;
     }
 
     /// <summary>The newest run that can be read, or null if there are none.</summary>

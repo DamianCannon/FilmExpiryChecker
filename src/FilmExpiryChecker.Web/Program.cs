@@ -38,6 +38,7 @@ builder.Services.AddHostedService(services => services.GetRequiredService<Refres
 // The user's settings (and a signal when they change), and what the Settings page offers.
 builder.Services.AddSingleton<CurrentSettings>();
 builder.Services.AddSingleton<ServiceCatalog>();
+builder.Services.AddSingleton<FilmExpiryChecker.Web.History.RunHistory>();
 
 // Once a day: on starting, and whenever a page opens, refresh if the last success wasn't today.
 builder.Services.AddSingleton<AutoRefresh>();
@@ -57,6 +58,7 @@ app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages:
 app.UseAntiforgery();
 
 app.MapStaticAssets();
+FilmExpiryChecker.Web.History.Downloads.MapDownloads(app);
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
