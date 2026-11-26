@@ -129,6 +129,15 @@ public class ReportBuilderSpecs
         Assert.Null(result.EarliestExpiry);
     }
 
+    [Fact]
+    public void Leaving_another_service_a_minute_after_the_threshold_counts_as_available_elsewhere()
+    {
+        var result = One(On(Disney, Now.AddDays(ThresholdDays).AddMinutes(1)));
+
+        Assert.Equal(FilmCategory.AvailableOtherServices, result.Category);
+        Assert.Null(result.EarliestExpiry);
+    }
+
     // ── Several offers from one service ─────────────────────────────────────────
 
     [Fact]
