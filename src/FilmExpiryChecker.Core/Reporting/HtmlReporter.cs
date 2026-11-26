@@ -87,6 +87,7 @@ public class HtmlReporter
             FilmCategory.LeavingSoonOtherServices => ("cat2", "⚠️",  true,  false),
             FilmCategory.AvailableMyServices      => ("cat3", "✅", false, false),
             FilmCategory.AvailableOtherServices   => ("cat4", "📺", false, true),
+            FilmCategory.RentOrBuyOnly            => ("cat5", "💷", false, false),
             FilmCategory.NotOnAnyService          => ("cat5", "❌", false, false),
             FilmCategory.NotFoundOnJustWatch      => ("cat6", "❓", false, false),
             _                                     => ("cat6", "?",  false, false)
@@ -107,6 +108,9 @@ public class HtmlReporter
 
         if (showOther || category is FilmCategory.LeavingSoonOtherServices)
             sb.Append("<th>Service</th>");
+
+        if (category is FilmCategory.RentOrBuyOnly)
+            sb.Append("<th>Rent or buy from</th>");
 
         sb.AppendLine("</tr>");
 
@@ -130,6 +134,9 @@ public class HtmlReporter
 
             if (showOther || category is FilmCategory.LeavingSoonOtherServices)
                 sb.Append($"<td>{HtmlEncode(film.OtherServicesDisplay)}</td>");
+
+            if (category is FilmCategory.RentOrBuyOnly)
+                sb.Append($"<td>{HtmlEncode(film.RentOrBuyDisplay)}</td>");
 
             sb.AppendLine("</tr>");
         }

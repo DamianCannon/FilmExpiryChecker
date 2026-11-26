@@ -143,6 +143,11 @@ public sealed class CheckRunner(
             throw;
         }
 
+        // Offers of a kind not known are ignored in grouping; say so once each, in case JustWatch adds one.
+        foreach (var type in offers.Values.SelectMany(o => o ?? []).Select(o => o.MonetizationType)
+                     .Where(t => OfferKinds.Of(t) == OfferKind.Unknown).Distinct(StringComparer.OrdinalIgnoreCase))
+            log.LogWarning("JustWatch offered films as \"{Type}\", which isn't a known kind; those offers are ignored.", type);
+
         // 4. Save what was fetched
         progress?.Report(new RunProgress(RunStep.Saving));
         cache.Save();

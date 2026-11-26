@@ -34,6 +34,10 @@
                     {
                         <th>Service</th>
                     }
+                    @if (look.ShowRentOrBuy)
+                    {
+                        <th>Rent or buy from</th>
+                    }
                 </tr>
             </thead>
             <tbody>
@@ -50,11 +54,15 @@
                         }
                         @if (look.ShowMine)
                         {
-                            <td>@film.MyServicesDisplay</td>
+                            <td>@Offers(film.MyServiceOffers)</td>
                         }
                         @if (look.ShowOther)
                         {
-                            <td>@film.OtherServicesDisplay</td>
+                            <td>@Offers(film.OtherServiceOffers)</td>
+                        }
+                        @if (look.ShowRentOrBuy)
+                        {
+                            <td>@Offers(film.RentOrBuyOffers)</td>
                         }
                     </tr>
                 }
@@ -97,7 +105,34 @@
 
     private static string Films(int n) => n == 1 ? "1 film" : $"{n} films";
 
-    private sealed record Appearance(string Css, string Icon, bool ShowExpiry, bool ShowMine, bool ShowOther);
+    private sealed record Appearance(string Css, string Icon, bool ShowExpiry, bool ShowMine, bool ShowOther, bool ShowRentOrBuy = false);
+
+    /// <summary>Each service with its kind's icon, the kind in words for screen readers and on hover, and its end date.</summary>
+    private static RenderFragment Offers(IEnumerable<ServiceOffer> offers) => builder =>
+    {
+        var first = true;
+        foreach (var offer in offers)
+        {
+            if (!first) builder.AddContent(0, ", ");
+            first = false;
+            var words = $"{offer.ServiceName} ({offer.Kind.Words()})";
+            builder.OpenElement(1, "span");
+            builder.AddAttribute(2, "class", $"offer offer--{offer.Kind.ToString().ToLowerInvariant()}");
+            builder.AddAttribute(3, "title", words);
+            builder.OpenElement(4, "span");
+            builder.AddAttribute(5, "aria-hidden", "true");
+            builder.AddContent(6, offer.Kind.Icon() + " ");
+            builder.CloseElement();
+            builder.AddContent(7, offer.ServiceName);
+            builder.OpenElement(8, "span");
+            builder.AddAttribute(9, "class", "visually-hidden");
+            builder.AddContent(10, $" ({offer.Kind.Words()})");
+            builder.CloseElement();
+            if (offer.ExpiryDate is { } until)
+                builder.AddContent(11, $" (until {until:dd MMM yyyy})");
+            builder.CloseElement();
+        }
+    };
 
     private static Appearance Look(FilmCategory category) => category switch
     {
@@ -105,6 +140,7 @@
         FilmCategory.LeavingSoonOtherServices => new("cat2", "⚠️", true, false, true),
         FilmCategory.AvailableMyServices => new("cat3", "✅", false, true, false),
         FilmCategory.AvailableOtherServices => new("cat4", "📺", false, false, true),
+        FilmCategory.RentOrBuyOnly => new("cat7", "💷", false, false, false, ShowRentOrBuy: true),
         FilmCategory.NotOnAnyService => new("cat5", "❌", false, false, false),
         _ => new("cat6", "❓", false, false, false),
     };

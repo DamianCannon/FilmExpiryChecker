@@ -209,7 +209,7 @@ public sealed class DownloadSpecs : IDisposable
 
         Assert.Equal("text/csv", response.Content.Headers.ContentType!.MediaType);
         Assert.Equal($"film-expiry-{run.Id}.csv", response.Content.Headers.ContentDisposition!.FileName);
-        Assert.Equal("Title,Year,Category,MyServices,OtherServices,ExpiryDate,DaysRemaining", lines[0].Trim());
+        Assert.Equal("Title,Year,Category,MyServices,OtherServices,ExpiryDate,DaysRemaining,HowToWatch,RentOrBuy", lines[0].Trim());
         Assert.Equal(5, lines.Length);
         Assert.StartsWith("\"Film, number 1\",2000,Available on your services,Netflix", lines[1]);
     }

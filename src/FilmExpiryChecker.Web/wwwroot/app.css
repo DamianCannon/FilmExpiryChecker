@@ -34,3 +34,20 @@ h1:focus {
     .blazor-error-boundary::after {
         content: "An error has occurred."
     }
+
+/* Read out by screen readers, not shown. */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+
+/* A service in the results, with its kind's icon (built in code, so not in the component's own styles). */
+.offer {
+    white-space: nowrap;
+}
+
