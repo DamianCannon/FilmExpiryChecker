@@ -32,7 +32,8 @@ public class LetterboxdScraper
         {
             var url = $"https://letterboxd.com/{_username}/watchlist/page/{page}/";
 
-            var html = await FetchPageAsync(url, ct);
+            // Failing to reach Letterboxd at all is not the same as an empty watchlist, so page 1 failing is an error.
+            var html = await FetchPageAsync(url, ct, failLoudly: page == 1);
             if (html is null)
             {
                 _logger.LogInformation("Watchlist page {Page} could not be fetched; stopping there.", page);
@@ -81,7 +82,8 @@ public class LetterboxdScraper
         return match.Success ? match.Groups[1].Value : null;
     }
 
-    private async Task<string?> FetchPageAsync(string url, CancellationToken ct)
+    /// <summary>The page, or null if it doesn't exist (404) or, unless <paramref name="failLoudly"/>, couldn't be fetched.</summary>
+    private async Task<string?> FetchPageAsync(string url, CancellationToken ct, bool failLoudly = false)
     {
         try
         {
@@ -97,6 +99,8 @@ public class LetterboxdScraper
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
             _logger.LogWarning("Error fetching {Url}: {Message}", url, ex.Message);
+            if (failLoudly)
+                throw new RunFailedException("Couldn't reach Letterboxd. Check your internet connection and try again.", ex);
             return null;
         }
     }

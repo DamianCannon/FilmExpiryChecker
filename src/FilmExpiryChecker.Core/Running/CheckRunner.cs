@@ -61,6 +61,9 @@ public sealed class CheckRunner(
     /// <summary>The cache is saved after every this many films.</summary>
     public const int SaveEvery = 25;
 
+    /// <summary>A run gives up after this many JustWatch searches fail in a row.</summary>
+    public const int GiveUpAfterSearchErrors = 5;
+
     public async Task<RunResult> RunAsync(
         AppSettings settings, IProgress<RunProgress>? progress = null, CancellationToken ct = default)
     {
@@ -104,6 +107,8 @@ public sealed class CheckRunner(
         // 2. The streaming services, for their names
         progress?.Report(new RunProgress(RunStep.FetchingServices));
         var services = await client.GetProvidersAsync(ct);
+        if (services.Count == 0)
+            throw new RunFailedException("Couldn't reach JustWatch to get the list of streaming services. Try again later.");
         log.LogInformation("{Count} providers loaded.", services.Count);
 
         // 3. Each film's offers
@@ -117,6 +122,11 @@ public sealed class CheckRunner(
             {
                 var film = watchlist[i];
                 offers[film.FilmId] = await client.GetOffersAsync(film, ct);
+
+                // Failed searches look like "not found"; a run of them means JustWatch is down, not the films.
+                if (client.ConsecutiveSearchErrors >= GiveUpAfterSearchErrors)
+                    throw new RunFailedException(
+                        "JustWatch stopped answering part-way through. Your earlier results are kept; try again later.");
 
                 // Saved as it goes, so a run that is killed outright still keeps most of its work.
                 if ((i + 1) % SaveEvery == 0)

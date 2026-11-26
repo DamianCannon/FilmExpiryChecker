@@ -1,3 +1,4 @@
+using FilmExpiryChecker;
 using FilmExpiryChecker.Cli;
 using FilmExpiryChecker.Config;
 using FilmExpiryChecker.JustWatch;
@@ -110,6 +111,12 @@ catch (OperationCanceledException) when (cancel.IsCancellationRequested)
     Console.WriteLine();
     Console.WriteLine("Cancelled.");
     return 130;
+}
+catch (RunFailedException failed)
+{
+    Console.WriteLine();
+    Console.WriteLine($"ERROR: {failed.Message}");
+    return 1;
 }
 
 if (result.Outcome == RunOutcome.EmptyWatchlist)

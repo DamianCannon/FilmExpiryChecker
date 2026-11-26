@@ -32,16 +32,29 @@ internal sealed class InstantWaits : TimeProvider
 }
 
 /// <summary>Stands in for the network: answers each request from a function and records what was asked.</summary>
-internal sealed class FakeHttp(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
+internal sealed class FakeHttp : HttpMessageHandler
 {
-    public List<string> RequestedUrls { get; } = new();
-    public List<string> RequestBodies { get; } = new();
+    private readonly Func<HttpRequestMessage, CancellationToken, HttpResponseMessage> _respond;
+    private readonly List<string> _urls = new();
+    private readonly List<string> _bodies = new();
+
+    public FakeHttp(Func<HttpRequestMessage, HttpResponseMessage> respond) => _respond = (request, _) => respond(request);
+
+    /// <summary>For a fake that needs the request's cancellation, e.g. to hang until the caller gives up.</summary>
+    public FakeHttp(Func<HttpRequestMessage, CancellationToken, HttpResponseMessage> respond) => _respond = respond;
+
+    public List<string> RequestedUrls { get { lock (_urls) return _urls.ToList(); } }
+    public List<string> RequestBodies { get { lock (_urls) return _bodies.ToList(); } }
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
     {
-        RequestedUrls.Add(request.RequestUri!.ToString());
-        RequestBodies.Add(request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(ct));
-        return respond(request);
+        var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(ct);
+        lock (_urls)
+        {
+            _urls.Add(request.RequestUri!.ToString());
+            _bodies.Add(body);
+        }
+        return _respond(request, ct);
     }
 
     public static HttpResponseMessage Html(string html) =>
