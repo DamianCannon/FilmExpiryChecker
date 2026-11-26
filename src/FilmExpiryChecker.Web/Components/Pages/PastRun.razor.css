@@ -1,0 +1,15 @@
+.past-run {
+    display: flex;
+    align-items: baseline;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+}
+
+    .past-run h1 {
+        margin: 0;
+    }
+
+    .past-run a {
+        color: var(--accent);
+    }

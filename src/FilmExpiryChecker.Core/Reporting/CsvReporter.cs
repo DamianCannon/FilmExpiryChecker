@@ -13,36 +13,45 @@ public class CsvReporter
         var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HHmm");
         var path = Path.Combine(outputDir, $"film-expiry-{timestamp}.csv");
 
+        Storage.SafeFile.Write(path, stream => WriteTo(stream, results, DateTimeOffset.UtcNow));
+        return path;
+    }
+
+    /// <summary>The same report, as text, with days remaining counted from <paramref name="now"/>.</summary>
+    public string ToCsv(List<FilmResult> results, DateTimeOffset now)
+    {
+        using var stream = new MemoryStream();
+        WriteTo(stream, results, now);
+        return new System.Text.UTF8Encoding(false).GetString(stream.ToArray());
+    }
+
+    private static void WriteTo(Stream stream, List<FilmResult> results, DateTimeOffset now)
+    {
         var config = new CsvConfiguration(CultureInfo.InvariantCulture)
         {
             HasHeaderRecord = true
         };
 
-        Storage.SafeFile.Write(path, stream =>
+        using var writer = new StreamWriter(stream, leaveOpen: true);
+        using var csv = new CsvWriter(writer, config);
+
+        csv.WriteHeader<CsvRow>();
+        csv.NextRecord();
+
+        foreach (var r in results)
         {
-            using var writer = new StreamWriter(stream, leaveOpen: true);
-            using var csv = new CsvWriter(writer, config);
-
-            csv.WriteHeader<CsvRow>();
-            csv.NextRecord();
-
-            foreach (var r in results)
+            csv.WriteRecord(new CsvRow
             {
-                csv.WriteRecord(new CsvRow
-                {
-                    Title = r.Film.Title,
-                    Year = r.Film.Year?.ToString() ?? "",
-                    Category = r.CategoryDisplay,
-                    MyServices = r.MyServicesDisplay,
-                    OtherServices = r.OtherServicesDisplay,
-                    ExpiryDate = r.ExpiryDisplay,
-                    DaysRemaining = r.DaysUntilExpiry?.ToString() ?? ""
-                });
-                csv.NextRecord();
-            }
-        });
-
-        return path;
+                Title = r.Film.Title,
+                Year = r.Film.Year?.ToString() ?? "",
+                Category = r.CategoryDisplay,
+                MyServices = r.MyServicesDisplay,
+                OtherServices = r.OtherServicesDisplay,
+                ExpiryDate = r.ExpiryDisplay,
+                DaysRemaining = r.DaysLeftAt(now)?.ToString() ?? ""
+            });
+            csv.NextRecord();
+        }
     }
 
     private class CsvRow
