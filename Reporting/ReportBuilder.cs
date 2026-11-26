@@ -8,15 +8,18 @@ public class ReportBuilder
     private readonly HashSet<int> _myServiceIds;
     private readonly Dictionary<int, string> _providerNames;
     private readonly int _expiringSoonDays;
+    private readonly TimeProvider _time;
 
     public ReportBuilder(
         IEnumerable<string> myServiceIds,
         IEnumerable<Package> allProviders,
-        int expiringSoonDays)
+        int expiringSoonDays,
+        TimeProvider? timeProvider = null)
     {
         _myServiceIds = new HashSet<int>(myServiceIds.Select(int.Parse));
         _providerNames = allProviders.ToDictionary(p => p.PackageId, p => p.ClearName);
         _expiringSoonDays = expiringSoonDays;
+        _time = timeProvider ?? TimeProvider.System;
     }
 
     public List<FilmResult> Build(List<WatchlistFilm> films, Func<WatchlistFilm, List<Offer>?> getOffers)
@@ -54,7 +57,7 @@ public class ReportBuilder
             return result;
         }
 
-        var threshold = DateTime.UtcNow.AddDays(_expiringSoonDays);
+        var threshold = _time.GetUtcNow().UtcDateTime.AddDays(_expiringSoonDays);
 
         // Per service: keep the earliest-dated offer (most urgent), or permanent if no dated offers
         var deduped = offers
