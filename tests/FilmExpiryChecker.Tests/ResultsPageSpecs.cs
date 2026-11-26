@@ -94,7 +94,7 @@ public sealed class ResultsPageSpecs : IDisposable
     }
 
     [Fact]
-    public void New_results_replace_the_old_ones_on_the_page_when_a_refresh_finishes()
+    public async Task New_results_replace_the_old_ones_on_the_page_when_a_refresh_finishes()
     {
         var latest = new LatestResults(_data);
         latest.Replace(Run(Now.AddDays(-1), Film("Old Film", On(Netflix))));
@@ -102,7 +102,7 @@ public sealed class ResultsPageSpecs : IDisposable
         var page = _context.Render<Home>();
         Assert.Contains("Old Film", page.Markup);
 
-        Task.Run(() => latest.Replace(Run(Now, Film("New Film", On(Netflix))))).Wait();
+        await Task.Run(() => latest.Replace(Run(Now, Film("New Film", On(Netflix)))));
 
         page.WaitForAssertion(() =>
         {
