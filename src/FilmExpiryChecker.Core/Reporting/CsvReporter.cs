@@ -48,7 +48,9 @@ public class CsvReporter
                 MyServices = r.MyServicesDisplay,
                 OtherServices = r.OtherServicesDisplay,
                 ExpiryDate = r.ExpiryDisplay,
-                DaysRemaining = r.DaysLeftAt(now)?.ToString() ?? ""
+                DaysRemaining = r.DaysLeftAt(now)?.ToString() ?? "",
+                HowToWatch = r.HowToWatchDisplay,
+                RentOrBuy = r.RentOrBuyDisplay
             });
             csv.NextRecord();
         }
@@ -63,5 +65,7 @@ public class CsvReporter
         public string OtherServices { get; set; } = string.Empty;
         public string ExpiryDate { get; set; } = string.Empty;
         public string DaysRemaining { get; set; } = string.Empty;
+        public string HowToWatch { get; set; } = string.Empty;
+        public string RentOrBuy { get; set; } = string.Empty;
     }
 }

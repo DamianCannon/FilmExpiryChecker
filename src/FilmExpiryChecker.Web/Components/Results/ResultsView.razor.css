@@ -72,3 +72,7 @@ td a {
 .expiry, .expiry-soon, .expiry-urgent { white-space: nowrap; }
 .expiry-urgent { color: #e63946; font-weight: 600; }
 .expiry-soon { color: #f4a261; font-weight: 600; }
+
+.cat7 h2 { background: #6c757d; color: #fff; }
+
+

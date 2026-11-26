@@ -194,6 +194,30 @@ public sealed class ResultsPageSpecs : IDisposable
     }
 
     [Fact]
+    public void Each_service_shows_its_kinds_icon_with_the_kind_in_words()
+    {
+        var view = View(Run(Now, Film("Mine", On(Netflix))));
+
+        var offer = view.Find(".cat3 .offer");
+        Assert.Equal("Netflix (subscription)", offer.GetAttribute("title"));
+        Assert.Equal("📺 ", offer.QuerySelector("[aria-hidden=true]")!.TextContent);
+        Assert.Equal(" (subscription)", offer.QuerySelector(".visually-hidden")!.TextContent);
+    }
+
+    [Fact]
+    public void A_film_only_to_rent_or_buy_is_listed_with_where_to_rent_it()
+    {
+        var rent = new Offer { MonetizationType = "RENT", Package = new OfferPackage { PackageId = Disney } };
+
+        var view = View(Run(Now, Film("Rent Me", rent)));
+
+        Assert.Contains("Rent or buy only", view.Find("h2").TextContent);
+        Assert.Equal(new[] { "Title", "Year", "Rent or buy from" }, view.FindAll("th").Select(h => h.TextContent));
+        Assert.Equal("Disney Plus (rent or buy)", view.Find(".offer").GetAttribute("title"));
+        Assert.Contains("💷", view.Find(".offer").TextContent);
+    }
+
+    [Fact]
     public void Titles_link_to_Letterboxd_in_a_new_window()
     {
         var link = View(Run(Now, Film("High and Low", On(Netflix)))).Find(".title a");

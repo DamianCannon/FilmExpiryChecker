@@ -105,11 +105,91 @@ public class ReportBuilderSpecs
         Assert.Equal("Disney Plus", result.OtherServicesDisplay);
     }
 
+    // ── How it can be watched (#20) ─────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("FLATRATE", OfferKind.Subscription)]
+    [InlineData("FREE", OfferKind.Free)]
+    [InlineData("ADS", OfferKind.Free)]
+    [InlineData("FAST", OfferKind.Free)]
+    [InlineData("RENT", OfferKind.RentOrBuy)]
+    [InlineData("BUY", OfferKind.RentOrBuy)]
+    [InlineData("CINEMA", OfferKind.Cinema)]
+    [InlineData("flatrate", OfferKind.Subscription)]
+    [InlineData("SOMETHING_NEW", OfferKind.Unknown)]
+    [InlineData(null, OfferKind.Unknown)]
+    public void Each_monetisation_type_is_a_kind(string? type, OfferKind expected) =>
+        Assert.Equal(expected, OfferKinds.Of(type));
+
     [Fact]
-    public void Rent_and_buy_offers_count_as_available()
+    public void A_film_that_can_only_be_rented_or_bought_is_in_its_own_group()
     {
-        // Current behaviour, pinned: the monetisation type isn't looked at.
-        Assert.Equal(FilmCategory.AvailableOtherServices, One(On(AppleTv, type: "RENT")).Category);
+        var result = One(On(AppleTv, type: "RENT"), On(Disney, type: "BUY"));
+
+        Assert.Equal(FilmCategory.RentOrBuyOnly, result.Category);
+        Assert.Equal("Apple TV, Disney Plus", result.RentOrBuyDisplay);
+    }
+
+    [Fact]
+    public void A_film_on_a_subscription_elsewhere_and_for_rent_is_available_elsewhere()
+    {
+        var result = One(On(Disney), On(AppleTv, type: "RENT"));
+
+        Assert.Equal(FilmCategory.AvailableOtherServices, result.Category);
+        Assert.Equal("Disney Plus", result.OtherServicesDisplay);
+    }
+
+    [Fact]
+    public void A_rent_offer_ending_soon_does_not_make_a_film_leaving_soon()
+    {
+        var result = One(On(Netflix), On(AppleTv, Now.AddDays(5), "RENT"));
+
+        Assert.Equal(FilmCategory.AvailableMyServices, result.Category);
+        Assert.Null(result.EarliestExpiry);
+    }
+
+    [Fact]
+    public void A_free_service_counts_as_mine_and_says_free()
+    {
+        var result = One(On(Disney, type: "ADS"));
+
+        Assert.Equal(FilmCategory.AvailableMyServices, result.Category);
+        Assert.Equal(OfferKind.Free, result.MyServiceOffers.Single().Kind);
+        Assert.Equal("Disney Plus (free)", result.MyServicesDisplay);
+    }
+
+    [Fact]
+    public void A_free_offer_leaving_soon_is_leaving_soon_on_mine()
+    {
+        Assert.Equal(FilmCategory.LeavingSoonMyServices, One(On(Disney, Now.AddDays(10), "FREE")).Category);
+    }
+
+    [Fact]
+    public void Only_a_cinema_showing_is_on_no_streaming_service()
+    {
+        Assert.Equal(FilmCategory.NotOnAnyService, One(On(AppleTv, type: "CINEMA")).Category);
+    }
+
+    [Fact]
+    public void An_unknown_kind_is_ignored_and_reported_once()
+    {
+        var reported = new List<string>();
+        var builder = new ReportBuilder(new[] { "8" }, Providers, ThresholdDays, new FixedClock(new DateTimeOffset(Now)), reported.Add);
+
+        var results = builder.Build(
+            [Film("One", "1"), Film("Two", "2")],
+            _ => [On(Netflix, type: "SOMETHING_NEW")]);
+
+        Assert.All(results, r => Assert.Equal(FilmCategory.NotOnAnyService, r.Category));
+        Assert.Equal(new[] { "SOMETHING_NEW" }, reported);
+    }
+
+    [Fact]
+    public void How_to_watch_names_each_kind_once()
+    {
+        var result = One(On(Netflix), On(Disney, type: "ADS"), On(AppleTv));
+
+        Assert.Equal("subscription, free", result.HowToWatchDisplay);
     }
 
     // ── The threshold ───────────────────────────────────────────────────────────

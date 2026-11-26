@@ -9,8 +9,9 @@ public enum FilmCategory
     LeavingSoonOtherServices = 2,
     AvailableMyServices = 3,
     AvailableOtherServices = 4,
-    NotOnAnyService = 5,
-    NotFoundOnJustWatch = 6
+    RentOrBuyOnly = 5,
+    NotOnAnyService = 6,
+    NotFoundOnJustWatch = 7
 }
 
 public class FilmResult
@@ -23,6 +24,9 @@ public class FilmResult
 
     /// <summary>Other services (not subscribed) that have this film.</summary>
     public List<ServiceOffer> OtherServiceOffers { get; set; } = new();
+
+    /// <summary>Services where it can only be rented or bought.</summary>
+    public List<ServiceOffer> RentOrBuyOffers { get; set; } = new();
 
     /// <summary>Earliest expiry across all relevant offers, if known.</summary>
     public DateTime? EarliestExpiry { get; set; }
@@ -45,6 +49,14 @@ public class FilmResult
             ? string.Join(", ", OtherServiceOffers.Select(o => FormatOffer(o)))
             : string.Empty;
 
+    public string RentOrBuyDisplay => string.Join(", ", RentOrBuyOffers.Select(o => o.ServiceName));
+
+    /// <summary>How it can be watched, in words: e.g. "subscription, free" or "rent or buy".</summary>
+    public string HowToWatchDisplay => string.Join(", ",
+        MyServiceOffers.Concat(OtherServiceOffers).Select(o => o.Kind)
+            .Concat(Category == FilmCategory.RentOrBuyOnly ? [OfferKind.RentOrBuy] : [])
+            .Distinct().Order().Select(k => k.Words()));
+
     public string ExpiryDisplay => EarliestExpiry.HasValue
         ? EarliestExpiry.Value.ToString("dd MMM yyyy")
         : string.Empty;
@@ -55,15 +67,17 @@ public class FilmResult
         FilmCategory.LeavingSoonOtherServices => "Leaving soon — other services",
         FilmCategory.AvailableMyServices      => "Available on your services",
         FilmCategory.AvailableOtherServices   => "Available elsewhere only",
+        FilmCategory.RentOrBuyOnly            => "Rent or buy only",
         FilmCategory.NotOnAnyService          => "Not on any streaming service",
         FilmCategory.NotFoundOnJustWatch      => "Not found on JustWatch",
         _                                     => string.Empty
     };
 
-    private static string FormatOffer(ServiceOffer o) =>
-        o.ExpiryDate.HasValue
-            ? $"{o.ServiceName} (until {o.ExpiryDate.Value:dd MMM yyyy})"
-            : o.ServiceName;
+    private static string FormatOffer(ServiceOffer o)
+    {
+        var name = o.Kind == OfferKind.Free ? $"{o.ServiceName} (free)" : o.ServiceName;
+        return o.ExpiryDate.HasValue ? $"{name} (until {o.ExpiryDate.Value:dd MMM yyyy})" : name;
+    }
 }
 
 public class ServiceOffer
@@ -71,4 +85,7 @@ public class ServiceOffer
     public int PackageId { get; set; }
     public string ServiceName { get; set; } = string.Empty;
     public DateTime? ExpiryDate { get; set; }
+
+    /// <summary>How the film is offered there.</summary>
+    public OfferKind Kind { get; set; } = OfferKind.Subscription;
 }
