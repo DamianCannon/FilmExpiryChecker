@@ -147,6 +147,24 @@ public sealed class DataFolderSpecs : IDisposable
         Assert.False(File.Exists(Data.JustWatchCacheFile));
     }
 
+    [Fact]
+    public void An_import_cut_off_part_way_runs_again_on_the_next_start()
+    {
+        var old = Legacy("old", May, cache: "the cache", reports: ["locked.csv"]);
+        var report = Path.Combine(old, "reports", "locked.csv");
+
+        using (new FileStream(report, FileMode.Open, FileAccess.Read, FileShare.None))
+            Assert.ThrowsAny<IOException>(() => Data.Prepare([old]));
+
+        Assert.False(File.Exists(Data.SettingsFile), "settings.json was written before the import finished");
+
+        var second = Data.Prepare([old]);
+
+        Assert.Equal(1, second.Reports);
+        Assert.Equal("film-fan", SettingsStore.Load(Data.SettingsFile).Letterboxd.Username);
+        Assert.Equal("the cache", File.ReadAllText(Data.JustWatchCacheFile));
+    }
+
     // ── Later starts ────────────────────────────────────────────────────────────
 
     [Fact]

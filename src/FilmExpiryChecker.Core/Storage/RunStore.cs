@@ -33,9 +33,11 @@ public sealed class SavedRun
     /// <summary>The films grouped as if these had been the settings.</summary>
     public List<FilmResult> Group(IEnumerable<string> myServices, int expiringSoonDays, TimeProvider? time = null)
     {
-        var offers = Films.ToDictionary(f => f.Film.FilmId, f => f.Offers);
+        // A film saved twice (by an older version) is shown once, as first saved.
+        var films = Films.DistinctBy(f => f.Film.FilmId).ToList();
+        var offers = films.ToDictionary(f => f.Film.FilmId, f => f.Offers);
         return new ReportBuilder(myServices, Services, expiringSoonDays, time)
-            .Build(Films.Select(f => f.Film).ToList(), film => offers.GetValueOrDefault(film.FilmId));
+            .Build(films.Select(f => f.Film).ToList(), film => offers.GetValueOrDefault(film.FilmId));
     }
 }
 

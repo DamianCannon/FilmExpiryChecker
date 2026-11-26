@@ -159,6 +159,26 @@ public sealed class CheckRunnerSpecs : IDisposable
     }
 
     [Fact]
+    public async Task A_film_on_two_pages_is_listed_once()
+    {
+        // As happens when a film is added while the pages are read: page 2 starts with page 1's last film.
+        var page1 = Fixture.Read("watchlist-page-1.html");
+        var lastOfPage1 = System.Text.RegularExpressions.Regex.Matches(page1, """<li class="griditem">[\s\S]*?</li>""")[^1].Value;
+        var page2 = Fixture.Read("watchlist-page-2.html").Replace("""<ul class="grid -p125 -scaled128">""", """<ul class="grid -p125 -scaled128">""" + lastOfPage1);
+        var http = Sites((request, _) => request.RequestUri!.ToString() == Watchlist + "2/" ? FakeHttp.Html(page2) : null);
+
+        var progress = new RecordedProgress<RunProgress>();
+
+        await new CheckRunner(new HttpClient(http), Data, time: InstantWaits.Instance).RunAsync(Settings(), progress);
+
+        var saved = new RunStore(Data).Latest()!;
+        Assert.Equal(6, Steps(progress, RunStep.ReadingWatchlist).Last().Films);
+        Assert.Equal(5, saved.Films.Count);
+        Assert.Single(saved.Films, f => f.Film.Slug == "socrates");
+        Assert.All(Steps(progress, RunStep.CheckingFilms), p => Assert.Equal(5, p.Total));
+    }
+
+    [Fact]
     public async Task A_cancelled_run_is_not_saved()
     {
         var progress = new RecordedProgress<RunProgress>(p =>

@@ -158,6 +158,18 @@ public sealed class RunStoreSpecs : IDisposable
     }
 
     [Fact]
+    public void A_run_holding_a_film_twice_groups_it_once()
+    {
+        var run = Run(Morning);
+        run.Films.Add(new SavedFilm { Film = run.Films[0].Film, Offers = [On(Disney)] });
+
+        var results = run.Group(Now);
+
+        Assert.Single(results, r => r.Film.FilmId == "44542");
+        Assert.Equal(FilmCategory.AvailableMyServices, CategoryOf(results, "High and Low"));
+    }
+
+    [Fact]
     public void Regrouping_with_other_services_moves_films_between_mine_and_elsewhere()
     {
         var run = Store.Load(Store.Save(Run(Morning)).Id)!;

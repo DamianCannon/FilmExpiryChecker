@@ -56,17 +56,6 @@ public sealed class DataFolder
         var folders = legacyFolders.Where(Directory.Exists).Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var report = new ImportReport();
 
-        var settings = Newest(folders, "appsettings.json");
-        if (settings is not null)
-        {
-            SettingsStore.Save(SettingsFile, SettingsStore.Load(settings));
-            report.Settings = settings;
-        }
-        else
-        {
-            SettingsStore.Save(SettingsFile, new AppSettings());
-        }
-
         report.JustWatchCache = CopyNewest(folders, "cache.json", JustWatchCacheFile);
         report.ImdbCache = CopyNewest(folders, "imdb-ids.json", ImdbCacheFile);
 
@@ -75,11 +64,24 @@ public sealed class DataFolder
         {
             var target = Path.Combine(ReportsFolder, Path.GetFileName(file));
             if (File.Exists(target)) continue;
-            File.Copy(file, target);
+            Copy(file, target);
             report.Reports++;
         }
 
+        // settings.json marks the import as done, so it is written last: an import cut off part-way runs again.
+        var settings = Newest(folders, "appsettings.json");
+        SettingsStore.Save(SettingsFile, settings is null ? new AppSettings() : SettingsStore.Load(settings));
+        report.Settings = settings;
+
         return report;
+    }
+
+    /// <summary>Copies via a .part file, so a copy cut off part-way never looks whole.</summary>
+    private static void Copy(string source, string target)
+    {
+        var part = SafeFile.PartPath(target);
+        File.Copy(source, part, overwrite: true);
+        File.Move(part, target);
     }
 
     private static string? Newest(IEnumerable<string> folders, string name) =>
@@ -93,7 +95,7 @@ public sealed class DataFolder
         if (File.Exists(target)) return null;
         var source = Newest(folders, name);
         if (source is null) return null;
-        File.Copy(source, target);
+        Copy(source, target);
         return source;
     }
 }

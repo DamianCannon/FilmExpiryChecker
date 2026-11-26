@@ -96,6 +96,9 @@ public sealed class CheckRunner(
         if (watchlist.Count == 0)
             return new RunResult { Outcome = RunOutcome.EmptyWatchlist, Films = new() };
 
+        // A film added while the pages are read shifts them, so one film can end one page and start the next.
+        watchlist = watchlist.DistinctBy(f => f.FilmId).ToList();
+
         log.LogInformation("Total films in watchlist: {Count}", watchlist.Count);
 
         // 2. The streaming services, for their names
