@@ -6,7 +6,8 @@ namespace FilmExpiryChecker.Reporting;
 
 public class CsvReporter
 {
-    public void Write(List<FilmResult> results, string outputDir)
+    /// <summary>Writes the report and returns the path of the file written.</summary>
+    public string Write(List<FilmResult> results, string outputDir)
     {
         Directory.CreateDirectory(outputDir);
         var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HHmm");
@@ -38,7 +39,7 @@ public class CsvReporter
             csv.NextRecord();
         }
 
-        Console.WriteLine($"CSV written: {path}");
+        return path;
     }
 
     private class CsvRow

@@ -1,4 +1,6 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace FilmExpiryChecker.JustWatch;
 
@@ -6,6 +8,7 @@ public class JustWatchCache
 {
     private readonly string _filePath;
     private readonly int _expiryDays;
+    private readonly ILogger _logger;
     private Dictionary<string, CachedFilmData> _store = new();
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -14,10 +17,11 @@ public class JustWatchCache
         PropertyNameCaseInsensitive = true
     };
 
-    public JustWatchCache(string filePath, int expiryDays)
+    public JustWatchCache(string filePath, int expiryDays, ILogger? logger = null)
     {
         _filePath = filePath;
         _expiryDays = expiryDays;
+        _logger = logger ?? NullLogger.Instance;
         Load();
     }
 
@@ -37,7 +41,7 @@ public class JustWatchCache
         }
         catch
         {
-            Console.WriteLine($"Warning: could not read cache file at {_filePath}, starting fresh.");
+            _logger.LogWarning("Could not read cache file at {Path}, starting fresh.", _filePath);
             _store = new Dictionary<string, CachedFilmData>();
         }
     }
