@@ -43,6 +43,9 @@ public sealed class RunResult
     public required List<FilmResult> Films { get; init; }
 
     public int ServiceCount { get; init; }
+
+    /// <summary>The run as saved in the data folder. Null unless the run completed.</summary>
+    public SavedRun? Run { get; init; }
 }
 
 /// <summary>
@@ -132,10 +135,20 @@ public sealed class CheckRunner(
         cache.Save();
         log.LogInformation("Cache saved.");
 
-        var films = new ReportBuilder(settings.JustWatch.MyServices, services, settings.JustWatch.ExpiringSoonDays, _time)
-            .Build(watchlist, film => offers.GetValueOrDefault(film.FilmId));
+        // 5. Keep the run itself, raw offers and all, so it can be shown and regrouped later
+        var run = new RunStore(data).Save(new SavedRun
+        {
+            RanAt = _time.GetUtcNow(),
+            Username = settings.Letterboxd.Username,
+            Region = settings.JustWatch.Region,
+            MyServices = settings.JustWatch.MyServices.ToList(),
+            ExpiringSoonDays = settings.JustWatch.ExpiringSoonDays,
+            Services = services,
+            Films = watchlist.Select(f => new SavedFilm { Film = f, Offers = offers.GetValueOrDefault(f.FilmId) }).ToList(),
+        });
+        log.LogInformation("Run saved as {Id}.", run.Id);
 
-        return new RunResult { Outcome = RunOutcome.Completed, Films = films, ServiceCount = services.Count };
+        return new RunResult { Outcome = RunOutcome.Completed, Films = run.Group(_time), ServiceCount = services.Count, Run = run };
     }
 
     /// <summary>Passes each report straight on, on the same thread, so progress arrives in order.</summary>
