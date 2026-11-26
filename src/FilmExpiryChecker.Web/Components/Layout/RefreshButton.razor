@@ -1,6 +1,6 @@
 @using FilmExpiryChecker.Web.Refresh
 @implements IDisposable
-@inject RefreshService Refresh
+@inject IRefreshStatus Refresh
 
 <button class="refresh-button" type="button" disabled="@_running" @onclick="Start">
     @(_running ? "Refreshing…" : "Refresh")

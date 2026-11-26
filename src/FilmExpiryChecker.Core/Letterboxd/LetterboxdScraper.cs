@@ -85,17 +85,40 @@ public class LetterboxdScraper
     /// <summary>The page, or null if it doesn't exist (404) or, unless <paramref name="failLoudly"/>, couldn't be fetched.</summary>
     private async Task<string?> FetchPageAsync(string url, CancellationToken ct, bool failLoudly = false)
     {
+        HttpResponseMessage response;
         try
         {
-            var response = await _http.GetAsync(url, ct);
-
-            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
-                return null;
-
-            response.EnsureSuccessStatusCode();
-            return await response.Content.ReadAsStringAsync(ct);
+            response = await _http.GetAsync(url, ct);
         }
         // A cancelled run must stop, not look like the end of the watchlist. A timeout still counts as a failure.
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning("Error fetching {Url}: {Message}", url, ex.Message);
+            if (failLoudly)
+                throw new RunFailedException("Couldn't reach Letterboxd. Check your internet connection and try again.", ex);
+            return null;
+        }
+
+        // Letterboxd answers 403 (not 404) for a username that doesn't exist; both mean "no such page".
+        if (response.StatusCode is System.Net.HttpStatusCode.NotFound or System.Net.HttpStatusCode.Forbidden)
+        {
+            _logger.LogInformation("{Url} answered {Status}.", url, (int)response.StatusCode);
+            return null;
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("Error fetching {Url}: {Status}", url, (int)response.StatusCode);
+            if (failLoudly)
+                throw new RunFailedException(
+                    $"Letterboxd isn't working properly right now (it answered {(int)response.StatusCode}). Try again later.");
+            return null;
+        }
+
+        try
+        {
+            return await response.Content.ReadAsStringAsync(ct);
+        }
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
             _logger.LogWarning("Error fetching {Url}: {Message}", url, ex.Message);
