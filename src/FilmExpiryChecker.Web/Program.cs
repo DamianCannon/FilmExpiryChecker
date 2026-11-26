@@ -1,6 +1,7 @@
 using FilmExpiryChecker.Storage;
 using FilmExpiryChecker.Web;
 using FilmExpiryChecker.Web.Components;
+using FilmExpiryChecker.Web.Refresh;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -14,6 +15,24 @@ builder.Services.AddSingleton(DataFolder.Resolve(args, Environment.GetEnvironmen
 builder.Services.AddSingleton(new LegacyFolders(LegacyFiles.Folders(AppContext.BaseDirectory, Environment.CurrentDirectory)));
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddHostedService<DataFolderSetup>();
+
+// The app's log goes to the data folder's logs folder: run by the launcher, nobody sees a console.
+builder.Services.AddSingleton<ILoggerProvider, FileLoggerProvider>();
+
+// One HTTP client for Letterboxd and JustWatch, introducing itself as a browser, as the CLI does.
+builder.Services.AddSingleton(_ =>
+{
+    var http = new HttpClient();
+    http.DefaultRequestHeaders.Add("User-Agent",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+    return http;
+});
+
+// The refresh runs in the background; closing the app waits up to 30 s for it to stop and save what it has.
+builder.Services.AddSingleton<LatestResults>();
+builder.Services.AddSingleton<RefreshService>();
+builder.Services.AddHostedService(services => services.GetRequiredService<RefreshService>());
+builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = TimeSpan.FromSeconds(30));
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();

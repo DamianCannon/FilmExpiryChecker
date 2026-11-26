@@ -89,6 +89,25 @@ public class LetterboxdScraperSpecs
     }
 
     [Fact]
+    public async Task Not_reaching_Letterboxd_at_all_is_an_error_not_an_empty_watchlist()
+    {
+        var (scraper, _) = ScraperWith(_ => throw new HttpRequestException("No such host is known."));
+
+        var failed = await Assert.ThrowsAsync<RunFailedException>(() => scraper.GetWatchlistAsync());
+
+        Assert.Contains("Couldn't reach Letterboxd", failed.Message);
+    }
+
+    [Fact]
+    public async Task Losing_the_connection_after_page_one_keeps_the_films_so_far()
+    {
+        var (scraper, _) = ScraperWith(url =>
+            url == Watchlist + "1/" ? FakeHttp.Html(Fixture.Read("watchlist-page-1.html")) : throw new HttpRequestException("Connection reset."));
+
+        Assert.Equal(3, (await scraper.GetWatchlistAsync()).Count);
+    }
+
+    [Fact]
     public async Task A_missing_watchlist_gives_no_films()
     {
         var (scraper, _) = ScraperWith(_ => FakeHttp.NotFound());

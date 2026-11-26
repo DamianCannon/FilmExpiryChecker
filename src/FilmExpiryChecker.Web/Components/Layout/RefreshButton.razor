@@ -1,0 +1,32 @@
+@using FilmExpiryChecker.Web.Refresh
+@implements IDisposable
+@inject RefreshService Refresh
+
+<button class="refresh-button" type="button" disabled="@_running" @onclick="Start">
+    @(_running ? "Refreshing…" : "Refresh")
+</button>
+
+@code {
+    private bool _running;
+
+    protected override void OnInitialized()
+    {
+        _running = Refresh.State is RefreshState.Running;
+        Refresh.Changed += OnChanged;
+    }
+
+    private void Start() => Refresh.RequestRefresh();
+
+    // Progress arrives many times a second; the button only re-renders when running starts or stops.
+    private void OnChanged(RefreshState state)
+    {
+        if ((state is RefreshState.Running) == _running) return;
+        _ = InvokeAsync(() =>
+        {
+            _running = Refresh.State is RefreshState.Running;
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose() => Refresh.Changed -= OnChanged;
+}

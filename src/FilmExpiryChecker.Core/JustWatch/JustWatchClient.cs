@@ -176,18 +176,27 @@ public class JustWatchClient
                 var body = await httpResponse.Content.ReadAsStringAsync(ct);
                 _logger.LogWarning("JustWatch API error for '{Title}': {Status} — {Body}",
                     filmTitle, httpResponse.StatusCode, body[..Math.Min(300, body.Length)]);
+                ConsecutiveSearchErrors++;
                 return null;
             }
             var response = await httpResponse.Content.ReadFromJsonAsync<FilmSearchResponse>(JsonOptions, ct);
+            ConsecutiveSearchErrors = 0;
             return response?.Data?.PopularTitles?.Edges;
         }
         // A cancelled run must stop, not be mistaken for "film not found". A timeout still counts as a failure.
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
             _logger.LogWarning("JustWatch API error for '{Title}': {Message}", filmTitle, ex.Message);
+            ConsecutiveSearchErrors++;
             return null;
         }
     }
+
+    /// <summary>
+    /// Searches that failed in a row (an error, not "no match"). Each one looks like "not found", so a run can
+    /// tell when JustWatch has stopped answering rather than save every film as missing.
+    /// </summary>
+    public int ConsecutiveSearchErrors { get; private set; }
 
     private static TitleDetail? FindBestMatch(WatchlistFilm film, List<TitleNode> edges)
     {

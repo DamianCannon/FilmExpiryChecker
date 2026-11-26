@@ -16,11 +16,10 @@ namespace FilmExpiryChecker.Tests;
 /// </summary>
 public sealed class CheckRunnerSpecs : IDisposable
 {
-    private const string Watchlist = "https://letterboxd.com/example-user/watchlist/page/";
-    private const string JustWatchApi = "https://apis.justwatch.com/graphql";
+    private const string Watchlist = FakeSites.Watchlist;
+    private const string JustWatchApi = FakeSites.JustWatchApi;
 
-    // The five films on the fixture pages, in order: slug → Letterboxd ID.
-    private static readonly string[] FilmIds = { "154091", "1284043", "61097", "44542", "50686" };
+    private static readonly string[] FilmIds = FakeSites.FilmIds;
 
     private readonly TempFolder _temp = new();
     private readonly CancellationTokenSource _cancel = new();
@@ -40,50 +39,8 @@ public sealed class CheckRunnerSpecs : IDisposable
         Cache = { ExpiryDays = 7 },
     };
 
-    /// <summary>Answers like the real sites. <paramref name="intercept"/> may answer a request first (or throw).</summary>
-    private FakeHttp Sites(Func<HttpRequestMessage, string, HttpResponseMessage?>? intercept = null) => new(request =>
-    {
-        var url = request.RequestUri!.ToString();
-        var body = request.Content?.ReadAsStringAsync().GetAwaiter().GetResult() ?? string.Empty;
-
-        if (intercept?.Invoke(request, body) is { } answered) return answered;
-
-        if (url == Watchlist + "1/") return FakeHttp.Html(Fixture.Read("watchlist-page-1.html"));
-        if (url == Watchlist + "2/") return FakeHttp.Html(Fixture.Read("watchlist-page-2.html"));
-        if (url == JustWatchApi && body.Contains("GetPackages"))
-            return FakeHttp.Json("""{"data":{"packages":[{"id":"p8","packageId":8,"clearName":"Netflix","technicalName":"netflix","icon":""}]}}""");
-        if (url == JustWatchApi) return FakeHttp.Json(OnNetflix(SearchedTitle(body)));
-        return FakeHttp.NotFound();
-    });
-
-    private static string SearchedTitle(string body)
-    {
-        using var json = JsonDocument.Parse(body);
-        return json.RootElement.GetProperty("variables").GetProperty("filter").GetProperty("searchQuery").GetString()!;
-    }
-
-    private static string OnNetflix(string title) => JsonSerializer.Serialize(new
-    {
-        data = new
-        {
-            popularTitles = new
-            {
-                edges = new[]
-                {
-                    new
-                    {
-                        node = new
-                        {
-                            id = "tm1",
-                            objectType = "MOVIE",
-                            content = new { title, originalReleaseYear = (int?)null, externalIds = new { imdbId = (string?)null } },
-                            offers = new[] { new { monetizationType = "FLATRATE", package = new { id = "p8", packageId = 8 }, availableTo = (string?)null } },
-                        },
-                    },
-                },
-            },
-        },
-    });
+    private static FakeHttp Sites(Func<HttpRequestMessage, string, HttpResponseMessage?>? intercept = null) =>
+        FakeSites.Create(intercept is null ? null : (request, body, _) => intercept(request, body));
 
     private static List<RunProgress> Steps(RecordedProgress<RunProgress> progress, RunStep step) =>
         progress.Reports.Where(p => p.Step == step).ToList();
@@ -202,6 +159,37 @@ public sealed class CheckRunnerSpecs : IDisposable
             new CheckRunner(new HttpClient(http), Data, time: InstantWaits.Instance).RunAsync(Settings()));
 
         Assert.Empty(new RunStore(Data).List());
+    }
+
+    [Fact]
+    public async Task No_services_from_JustWatch_fails_the_run_in_plain_words()
+    {
+        var http = Sites((request, body) =>
+            body.Contains("GetPackages") ? throw new HttpRequestException("No such host is known.") : null);
+
+        var failed = await Assert.ThrowsAsync<RunFailedException>(() =>
+            new CheckRunner(new HttpClient(http), Data, time: InstantWaits.Instance).RunAsync(Settings()));
+
+        Assert.Contains("Couldn't reach JustWatch", failed.Message);
+        Assert.Empty(new RunStore(Data).List());
+    }
+
+    [Fact]
+    public async Task JustWatch_failing_search_after_search_fails_the_run_instead_of_saving_every_film_as_not_found()
+    {
+        // The first film is found; every search after it fails, as when JustWatch goes down mid-run.
+        var watchlist = LongWatchlist(10).Replace("Made Up Film 1 (2000)", "Kisapmata (1981)");
+        var longHttp = Sites((request, body) =>
+            request.RequestUri!.ToString() == Watchlist + "1/" ? FakeHttp.Html(watchlist)
+            : body.Contains("GetTitleOffers") && !body.Contains("Kisapmata") ? throw new HttpRequestException("Service unavailable")
+            : null);
+
+        var failed = await Assert.ThrowsAsync<RunFailedException>(() =>
+            new CheckRunner(new HttpClient(longHttp), Data, time: InstantWaits.Instance).RunAsync(Settings()));
+
+        Assert.Contains("JustWatch stopped answering", failed.Message);
+        Assert.Empty(new RunStore(Data).List());
+        Assert.True(new JustWatchCache(Data.JustWatchCacheFile, 7).TryGet("1001", out _), "the film found before the failures was not kept");
     }
 
     [Fact]
