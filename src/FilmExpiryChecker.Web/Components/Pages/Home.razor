@@ -1,7 +1,67 @@
-﻿@page "/"
+@page "/"
+@using FilmExpiryChecker.Storage
+@using FilmExpiryChecker.Web.Components.Results
+@using FilmExpiryChecker.Web.Refresh
+@implements IDisposable
+@inject LatestResults Latest
+@inject IRefreshStatus Refresh
+@inject DataFolder Data
 
 <PageTitle>Film Expiry Checker</PageTitle>
 
-<h1>Results</h1>
+@* Shows the last saved results straight away and never waits for a refresh; when one finishes, its results
+   replace these whole. *@
 
-<p>Your watchlist results will appear here.</p>
+@if (_run is not null)
+{
+    <ResultsView Run="_run" MyServices="_settings.JustWatch.MyServices" ExpiringSoonDays="_settings.JustWatch.ExpiringSoonDays" />
+}
+else
+{
+    <h1>No results yet</h1>
+    @if (Refresh.State is RefreshState.Running)
+    {
+        <p>Your first refresh is under way. Your results will appear here as soon as it finishes.</p>
+    }
+    else
+    {
+        <p>Press <strong>Refresh</strong> to check which of your Letterboxd watchlist films are on your streaming services, and which are leaving soon.</p>
+    }
+}
+
+@code {
+    private SavedRun? _run;
+    private Config.AppSettings _settings = new();
+
+    protected override void OnInitialized()
+    {
+        Load();
+        Latest.Changed += OnNewResults;
+        Refresh.Changed += OnRefreshChanged;
+    }
+
+    private void Load()
+    {
+        _run = Latest.Run;
+        _settings = SettingsStore.Load(Data.SettingsFile);
+    }
+
+    private void OnNewResults() => _ = InvokeAsync(() =>
+    {
+        Load();
+        StateHasChanged();
+    });
+
+    // Only matters while there are no results: the "first refresh is under way" note.
+    private void OnRefreshChanged(RefreshState state)
+    {
+        if (_run is null && state is not RefreshState.Running { Done: > 0 })
+            _ = InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Latest.Changed -= OnNewResults;
+        Refresh.Changed -= OnRefreshChanged;
+    }
+}

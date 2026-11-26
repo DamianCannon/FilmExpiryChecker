@@ -1,0 +1,111 @@
+@using FilmExpiryChecker.Reporting
+@using FilmExpiryChecker.Storage
+@inject TimeProvider Time
+
+@* One saved run, grouped as the report always has been: leaving soon first (soonest at the top), then what's
+   available, then the rest. "Days left" counts from now, not from when the run was fetched. *@
+
+<div class="summary">
+    <span>Films on your watchlist: <strong>@_results.Count</strong></span>
+    <span>On your services: <strong>@_onMine</strong></span>
+    <span class="urgent">Leaving soon: <strong>@_leavingSoon</strong></span>
+</div>
+
+@foreach (var group in _groups)
+{
+    var look = Look(group.Key);
+    <section class="category @look.Css" @key="group.Key">
+        <h2>@look.Icon @group.First().CategoryDisplay <span class="count">(@Films(group.Count()))</span></h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Year</th>
+                    @if (look.ShowExpiry)
+                    {
+                        <th>Leaving</th>
+                        <th>Days left</th>
+                    }
+                    @if (look.ShowMine)
+                    {
+                        <th>Your services</th>
+                    }
+                    @if (look.ShowOther)
+                    {
+                        <th>Service</th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var film in group)
+                {
+                    var days = film.DaysLeftAt(_now);
+                    <tr @key="film.Film.FilmId">
+                        <td class="title"><a href="https://letterboxd.com/film/@film.Film.Slug/" target="_blank" rel="noopener">@film.Film.Title</a></td>
+                        <td class="year">@film.Film.Year</td>
+                        @if (look.ShowExpiry)
+                        {
+                            <td class="@Urgency(days)">@film.ExpiryDisplay</td>
+                            <td class="@Urgency(days)">@(days is null ? "" : $"{days}d")</td>
+                        }
+                        @if (look.ShowMine)
+                        {
+                            <td>@film.MyServicesDisplay</td>
+                        }
+                        @if (look.ShowOther)
+                        {
+                            <td>@film.OtherServicesDisplay</td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </section>
+}
+
+@code {
+    /// <summary>The run to show.</summary>
+    [Parameter, EditorRequired] public SavedRun Run { get; set; } = null!;
+
+    /// <summary>The services to count as mine; the run's own if not given.</summary>
+    [Parameter] public IReadOnlyList<string>? MyServices { get; set; }
+
+    /// <summary>How many days ahead counts as "leaving soon"; the run's own if not given.</summary>
+    [Parameter] public int? ExpiringSoonDays { get; set; }
+
+    private List<FilmResult> _results = new();
+    private List<IGrouping<FilmCategory, FilmResult>> _groups = new();
+    private DateTimeOffset _now;
+    private int _onMine, _leavingSoon;
+
+    protected override void OnParametersSet()
+    {
+        _now = Time.GetUtcNow();
+        _results = Run.Group(MyServices ?? Run.MyServices, ExpiringSoonDays ?? Run.ExpiringSoonDays, Time);
+        _groups = _results.GroupBy(r => r.Category).OrderBy(g => g.Key).ToList();
+        _onMine = _results.Count(r => r.Category is FilmCategory.AvailableMyServices or FilmCategory.LeavingSoonMyServices);
+        _leavingSoon = _results.Count(r => r.Category is FilmCategory.LeavingSoonMyServices or FilmCategory.LeavingSoonOtherServices);
+    }
+
+    /// <summary>14 days or fewer is urgent; 30 or fewer is soon.</summary>
+    public static string Urgency(int? days) => days switch
+    {
+        <= 14 => "expiry-urgent",
+        <= 30 => "expiry-soon",
+        _ => "expiry",
+    };
+
+    private static string Films(int n) => n == 1 ? "1 film" : $"{n} films";
+
+    private sealed record Appearance(string Css, string Icon, bool ShowExpiry, bool ShowMine, bool ShowOther);
+
+    private static Appearance Look(FilmCategory category) => category switch
+    {
+        FilmCategory.LeavingSoonMyServices => new("cat1", "🚨", true, true, false),
+        FilmCategory.LeavingSoonOtherServices => new("cat2", "⚠️", true, false, true),
+        FilmCategory.AvailableMyServices => new("cat3", "✅", false, true, false),
+        FilmCategory.AvailableOtherServices => new("cat4", "📺", false, false, true),
+        FilmCategory.NotOnAnyService => new("cat5", "❌", false, false, false),
+        _ => new("cat6", "❓", false, false, false),
+    };
+}

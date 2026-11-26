@@ -27,8 +27,12 @@ public class FilmResult
     /// <summary>Earliest expiry across all relevant offers, if known.</summary>
     public DateTime? EarliestExpiry { get; set; }
 
-    public int? DaysUntilExpiry => EarliestExpiry.HasValue
-        ? (int)Math.Ceiling((EarliestExpiry.Value - DateTime.UtcNow).TotalDays)
+    public int? DaysUntilExpiry => DaysLeftAt(DateTimeOffset.UtcNow);
+
+    /// <summary>Whole days left from <paramref name="now"/> (rounded up), so "days left" is counted from the day
+    /// the results are looked at, not the day they were fetched.</summary>
+    public int? DaysLeftAt(DateTimeOffset now) => EarliestExpiry.HasValue
+        ? (int)Math.Ceiling((EarliestExpiry.Value - now.UtcDateTime).TotalDays)
         : null;
 
     public string MyServicesDisplay =>
