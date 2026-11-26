@@ -7,11 +7,15 @@ namespace FilmExpiryChecker.Tests;
 /// A clock stopped at one moment, so "now" never moves under a test, in a chosen time zone (UTC unless given).
 /// This PC is on UTC in winter, so tests about "today" use another zone, or a UTC/local mix-up would pass unseen.
 /// </summary>
-internal sealed class FixedClock(DateTimeOffset now, TimeZoneInfo? zone = null) : TimeProvider
+internal sealed class FixedClock(DateTimeOffset now, TimeZoneInfo? zone = null, bool instantWaits = false) : TimeProvider
 {
     public override DateTimeOffset GetUtcNow() => now.ToUniversalTime();
 
     public override TimeZoneInfo LocalTimeZone => zone ?? TimeZoneInfo.Utc;
+
+    /// <summary>With <c>instantWaits</c>, every wait ends at once, as with <see cref="InstantWaits"/>.</summary>
+    public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period) =>
+        instantWaits ? InstantWaits.Instance.CreateTimer(callback, state, dueTime, period) : base.CreateTimer(callback, state, dueTime, period);
 }
 
 /// <summary>

@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 
 namespace FilmExpiryChecker.Tests;
 
@@ -19,14 +20,17 @@ internal sealed class TestApp : WebApplicationFactory<Program>
     private readonly string _dataRoot;
     private readonly HttpMessageHandler _network;
     private readonly TimeProvider _time;
+    private readonly bool _autoRefreshOnStart;
 
     /// <param name="dataRoot">A data folder the test owns (and so outlives the app); otherwise a temporary one.</param>
-    public TestApp(HttpMessageHandler? network = null, string? dataRoot = null, TimeProvider? time = null)
+    /// <param name="autoRefreshOnStart">Whether starting the app may start a refresh by itself (off, so tests start their own).</param>
+    public TestApp(HttpMessageHandler? network = null, string? dataRoot = null, TimeProvider? time = null, bool autoRefreshOnStart = false)
     {
         if (dataRoot is null) _ownTemp = new TempFolder();
         _dataRoot = dataRoot ?? _ownTemp!.Path;
         _network = network ?? new FakeHttp(_ => FakeHttp.NotFound());
         _time = time ?? InstantWaits.Instance;
+        _autoRefreshOnStart = autoRefreshOnStart;
     }
 
     public DataFolder Data => new(_dataRoot);
@@ -49,6 +53,10 @@ internal sealed class TestApp : WebApplicationFactory<Program>
             services.Replace(ServiceDescriptor.Singleton(new LegacyFolders([])));
             services.Replace(ServiceDescriptor.Singleton(new HttpClient(_network)));
             services.Replace(ServiceDescriptor.Singleton(_time));
+            if (!_autoRefreshOnStart)
+                foreach (var onStart in services.Where(d => d.ServiceType == typeof(IHostedService)
+                             && d.ImplementationType?.Name == "AutoRefreshOnStart").ToList())
+                    services.Remove(onStart);
         });
 
     protected override void Dispose(bool disposing)
