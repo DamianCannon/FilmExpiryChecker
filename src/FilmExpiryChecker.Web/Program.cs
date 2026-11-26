@@ -33,6 +33,10 @@ builder.Services.AddSingleton<LatestResults>();
 builder.Services.AddSingleton<RefreshService>();
 builder.Services.AddSingleton<IRefreshStatus>(services => services.GetRequiredService<RefreshService>());
 builder.Services.AddHostedService(services => services.GetRequiredService<RefreshService>());
+
+// Once a day: on starting, and whenever a page opens, refresh if the last success wasn't today.
+builder.Services.AddSingleton<AutoRefresh>();
+builder.Services.AddHostedService<AutoRefreshOnStart>();
 builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = TimeSpan.FromSeconds(30));
 
 builder.Services.AddRazorComponents()

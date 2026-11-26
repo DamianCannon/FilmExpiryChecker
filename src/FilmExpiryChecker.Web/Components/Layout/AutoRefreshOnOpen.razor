@@ -1,0 +1,13 @@
+@using FilmExpiryChecker.Web.Refresh
+@inject AutoRefresh Auto
+
+@* Renders nothing. Each time a page opens (and is live), checks whether today's refresh is still due, so a
+   window left open overnight catches up the next time it's looked at. *@
+
+@code {
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender && RendererInfo.IsInteractive)
+            Auto.CheckNow();
+    }
+}
