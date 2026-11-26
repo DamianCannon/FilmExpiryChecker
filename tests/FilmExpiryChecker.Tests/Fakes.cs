@@ -31,6 +31,22 @@ internal sealed class FakeHttp(Func<HttpRequestMessage, HttpResponseMessage> res
     public static HttpResponseMessage NotFound() => new(HttpStatusCode.NotFound);
 }
 
+/// <summary>Records progress reports on the reporting thread, in order (unlike <see cref="Progress{T}"/>).</summary>
+internal sealed class RecordedProgress<T> : IProgress<T>
+{
+    private readonly Action<T>? _also;
+
+    public RecordedProgress(Action<T>? also = null) => _also = also;
+
+    public List<T> Reports { get; } = new();
+
+    public void Report(T value)
+    {
+        Reports.Add(value);
+        _also?.Invoke(value);
+    }
+}
+
 internal static class Fixture
 {
     public static string Read(string name) =>

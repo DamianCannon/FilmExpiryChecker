@@ -2,7 +2,8 @@ namespace FilmExpiryChecker.Reporting;
 
 public class HtmlReporter
 {
-    public void Write(List<FilmResult> results, string outputDir)
+    /// <summary>Writes the report and returns the path of the file written.</summary>
+    public string Write(List<FilmResult> results, string outputDir)
     {
         Directory.CreateDirectory(outputDir);
         var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HHmm");
@@ -21,7 +22,7 @@ public class HtmlReporter
 
         sb.AppendLine(HtmlFooter());
         File.WriteAllText(path, sb.ToString());
-        Console.WriteLine($"HTML report written: {path}");
+        return path;
     }
 
     private static string HtmlHeader(List<FilmResult> results, string timestamp)

@@ -1,7 +1,8 @@
+using FilmExpiryChecker.Cli;
 using FilmExpiryChecker.Config;
 using FilmExpiryChecker.JustWatch;
-using FilmExpiryChecker.Letterboxd;
 using FilmExpiryChecker.Reporting;
+using FilmExpiryChecker.Running;
 using Microsoft.Extensions.Configuration;
 
 // ── Configuration ─────────────────────────────────────────────────────────────
@@ -13,37 +14,21 @@ var config = new ConfigurationBuilder()
 
 var settings = config.Get<AppSettings>() ?? throw new InvalidOperationException("Could not load appsettings.json");
 
-// ── HTTP client setup ─────────────────────────────────────────────────────────
+// ── HTTP client and logging ───────────────────────────────────────────────────
 
 using var http = new HttpClient();
 http.DefaultRequestHeaders.Add("User-Agent",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
 
-// ── Letterboxd scraper ────────────────────────────────────────────────────────
+var loggers = new PlainConsoleLoggerFactory();
 
-var scraper = new LetterboxdScraper(http, settings.Letterboxd.Username);
-
-// ── IMDb ID cache (slug → IMDb ID, for cross-referencing foreign film titles) ─
-
-var imdbCachePath = Path.Combine(
-    Path.GetDirectoryName(Path.GetFullPath(settings.Cache.CacheFilePath)) ?? ".",
-    "imdb-ids.json");
-var imdbCache = new ImdbIdCache(imdbCachePath);
-
-Func<string, CancellationToken, Task<string?>> imdbResolver = async (slug, ct) =>
+// Ctrl+C cancels the run cleanly instead of killing the process mid-request.
+using var cancel = new CancellationTokenSource();
+Console.CancelKeyPress += (_, e) =>
 {
-    if (imdbCache.TryGet(slug, out var cached)) return cached;
-    await Task.Delay(300, ct);
-    var id = await scraper.FetchImdbIdAsync(slug, ct);
-    imdbCache.Set(slug, id);
-    imdbCache.Save();
-    return id;
+    e.Cancel = true;
+    cancel.Cancel();
 };
-
-// ── JustWatch client and cache ────────────────────────────────────────────────
-
-var cache = new JustWatchCache(settings.Cache.CacheFilePath, settings.Cache.ExpiryDays);
-var jwClient = new JustWatchClient(http, settings.JustWatch.Region, cache, imdbResolver);
 
 // ── --list-services mode ──────────────────────────────────────────────────────
 
@@ -51,12 +36,14 @@ if (args.Contains("--list-services"))
 {
     Console.WriteLine($"Fetching streaming services available on JustWatch in {settings.JustWatch.Region}...\n");
 
-    var providers = await jwClient.GetProvidersAsync();
+    var cache = new JustWatchCache(settings.Cache.CacheFilePath, settings.Cache.ExpiryDays, loggers.CreateLogger("Cache"));
+    var jwClient = new JustWatchClient(http, settings.JustWatch.Region, cache, logger: loggers.CreateLogger("JustWatch"));
+    var providers = await jwClient.GetProvidersAsync(cancel.Token);
 
     if (providers.Count == 0)
     {
         Console.WriteLine("No providers returned. Check your region setting or network connectivity.");
-        return;
+        return 1;
     }
 
     Console.WriteLine($"{"ID",-20} {"Display Name",-40} {"Technical Name"}");
@@ -85,7 +72,7 @@ if (args.Contains("--list-services"))
 
     File.WriteAllLines(servicesPath, lines);
     Console.WriteLine($"\nAlso written to: {servicesPath}");
-    return;
+    return 0;
 }
 
 // ── Main run ──────────────────────────────────────────────────────────────────
@@ -96,72 +83,41 @@ Console.WriteLine($"Your services: {string.Join(", ", settings.JustWatch.MyServi
 Console.WriteLine($"Expiry threshold: {settings.JustWatch.ExpiringSoonDays} days");
 Console.WriteLine();
 
-// Phase 1: Fetch watchlist
-var watchlist = await scraper.GetWatchlistAsync();
+var runner = new CheckRunner(http, loggers);
+var progress = new ConsoleProgress(settings.Letterboxd.Username);
 
-if (watchlist.Count == 0)
+RunResult result;
+try
+{
+    result = await runner.RunAsync(settings, progress, cancel.Token);
+}
+catch (OperationCanceledException) when (cancel.IsCancellationRequested)
+{
+    Console.WriteLine();
+    Console.WriteLine("Cancelled.");
+    return 130;
+}
+
+if (result.Outcome == RunOutcome.EmptyWatchlist)
 {
     Console.WriteLine("ERROR: No films retrieved from Letterboxd watchlist.");
     Console.WriteLine("Check that your username is correct and your watchlist is set to public.");
-    return;
+    return 1;
 }
 
 Console.WriteLine();
-
-// Phase 2: Fetch all providers (needed for name lookups in reports)
-Console.WriteLine("Fetching JustWatch provider list...");
-var allProviders = await jwClient.GetProvidersAsync();
-Console.WriteLine($"  {allProviders.Count} providers loaded.");
-Console.WriteLine();
-
-// Phase 3: Enrich each film via JustWatch (with caching)
-Console.WriteLine($"Enriching {watchlist.Count} films via JustWatch...");
-Console.WriteLine($"  Cache: {cache.Count} entries, {cache.ExpiredCount} expired.");
-Console.WriteLine();
-
-// Pre-fetch all offers so we can pass them to the builder
-var offerMap = new Dictionary<string, List<Offer>?>();
-var processed = 0;
-
-foreach (var film in watchlist)
-{
-    processed++;
-    if (processed % 25 == 0 || processed == watchlist.Count)
-        Console.WriteLine($"  {processed}/{watchlist.Count} films processed...");
-
-    offerMap[film.FilmId] = await jwClient.GetOffersAsync(film);
-}
-
-// Save cache after all fetches
-cache.Save();
-Console.WriteLine("Cache saved.");
-Console.WriteLine();
-
-// Phase 4: Build categorised report
 Console.WriteLine("Building report...");
-var builder = new ReportBuilder(
-    settings.JustWatch.MyServices,
-    allProviders,
-    settings.JustWatch.ExpiringSoonDays);
 
-var results = builder.Build(watchlist, film =>
-{
-    offerMap.TryGetValue(film.FilmId, out var offers);
-    return offers;
-});
-
-// Summary to console
-var categories = results.GroupBy(r => r.Category).OrderBy(g => g.Key);
-foreach (var group in categories)
+foreach (var group in result.Films.GroupBy(r => r.Category).OrderBy(g => g.Key))
     Console.WriteLine($"  {group.First().CategoryDisplay}: {group.Count()}");
 
 Console.WriteLine();
 
-// Phase 5: Output reports
 if (settings.Output.Csv)
-    new CsvReporter().Write(results, settings.Output.OutputDirectory);
+    Console.WriteLine($"CSV written: {new CsvReporter().Write(result.Films, settings.Output.OutputDirectory)}");
 
 if (settings.Output.Html)
-    new HtmlReporter().Write(results, settings.Output.OutputDirectory);
+    Console.WriteLine($"HTML report written: {new HtmlReporter().Write(result.Films, settings.Output.OutputDirectory)}");
 
 Console.WriteLine("\nDone.");
+return 0;

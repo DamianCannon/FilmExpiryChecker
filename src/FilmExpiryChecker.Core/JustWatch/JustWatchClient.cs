@@ -1,6 +1,8 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using FilmExpiryChecker.Letterboxd;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace FilmExpiryChecker.JustWatch;
 
@@ -10,6 +12,7 @@ public class JustWatchClient
     private readonly string _region;
     private readonly JustWatchCache _cache;
     private readonly Func<string, CancellationToken, Task<string?>>? _imdbIdResolver;
+    private readonly ILogger _logger;
 
     private const string ApiUrl = "https://apis.justwatch.com/graphql";
     private const int RequestDelayMs = 500;
@@ -24,12 +27,14 @@ public class JustWatchClient
         HttpClient http,
         string region,
         JustWatchCache cache,
-        Func<string, CancellationToken, Task<string?>>? imdbIdResolver = null)
+        Func<string, CancellationToken, Task<string?>>? imdbIdResolver = null,
+        ILogger? logger = null)
     {
         _http = http;
         _region = region;
         _cache = cache;
         _imdbIdResolver = imdbIdResolver;
+        _logger = logger ?? NullLogger.Instance;
     }
 
     // ── Provider listing ─────────────────────────────────────────────────────
@@ -166,15 +171,17 @@ public class JustWatchClient
             if (!httpResponse.IsSuccessStatusCode)
             {
                 var body = await httpResponse.Content.ReadAsStringAsync(ct);
-                Console.WriteLine($"  JustWatch API error for '{filmTitle}': {httpResponse.StatusCode} — {body[..Math.Min(300, body.Length)]}");
+                _logger.LogWarning("JustWatch API error for '{Title}': {Status} — {Body}",
+                    filmTitle, httpResponse.StatusCode, body[..Math.Min(300, body.Length)]);
                 return null;
             }
             var response = await httpResponse.Content.ReadFromJsonAsync<FilmSearchResponse>(JsonOptions, ct);
             return response?.Data?.PopularTitles?.Edges;
         }
-        catch (Exception ex)
+        // A cancelled run must stop, not be mistaken for "film not found". A timeout still counts as a failure.
+        catch (Exception ex) when (!ct.IsCancellationRequested)
         {
-            Console.WriteLine($"  JustWatch API error for '{filmTitle}': {ex.Message}");
+            _logger.LogWarning("JustWatch API error for '{Title}': {Message}", filmTitle, ex.Message);
             return null;
         }
     }

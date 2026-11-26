@@ -1,37 +1,39 @@
 using HtmlAgilityPack;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace FilmExpiryChecker.Letterboxd;
+
+/// <summary>One watchlist page read: its number, the films on it, and the films found so far.</summary>
+public readonly record struct WatchlistPage(int Page, int FilmsOnPage, int FilmsSoFar);
 
 public class LetterboxdScraper
 {
     private readonly HttpClient _http;
     private readonly string _username;
+    private readonly ILogger _logger;
 
-    // Letterboxd shows 100 (20 rows * 5 films) films per watchlist page
-    private const int FilmsPerPage = 100;
-
-    public LetterboxdScraper(HttpClient http, string username)
+    public LetterboxdScraper(HttpClient http, string username, ILogger? logger = null)
     {
         _http = http;
         _username = username;
+        _logger = logger ?? NullLogger.Instance;
     }
 
-    public async Task<List<WatchlistFilm>> GetWatchlistAsync(CancellationToken ct = default)
+    public async Task<List<WatchlistFilm>> GetWatchlistAsync(
+        IProgress<WatchlistPage>? progress = null, CancellationToken ct = default)
     {
         var films = new List<WatchlistFilm>();
         var page = 1;
 
-        Console.WriteLine($"Fetching Letterboxd watchlist for {_username}...");
-
         while (true)
         {
             var url = $"https://letterboxd.com/{_username}/watchlist/page/{page}/";
-            Console.Write($"  Page {page}... ");
 
             var html = await FetchPageAsync(url, ct);
             if (html is null)
             {
-                Console.WriteLine("failed to fetch, stopping.");
+                _logger.LogInformation("Watchlist page {Page} could not be fetched; stopping there.", page);
                 break;
             }
 
@@ -39,12 +41,12 @@ public class LetterboxdScraper
 
             if (pageFilms.Count == 0)
             {
-                Console.WriteLine("no films found, done.");
+                _logger.LogInformation("Watchlist page {Page} has no films; done.", page);
                 break;
             }
 
-            Console.WriteLine($"{pageFilms.Count} films.");
             films.AddRange(pageFilms);
+            progress?.Report(new WatchlistPage(page, pageFilms.Count, films.Count));
 
             // Check for a next page link rather than relying on film count
             if (!HasNextPage(html))
@@ -54,7 +56,6 @@ public class LetterboxdScraper
             await Task.Delay(300, ct);
         }
 
-        Console.WriteLine($"Total films in watchlist: {films.Count}");
         return films;
     }
 
@@ -90,9 +91,10 @@ public class LetterboxdScraper
             response.EnsureSuccessStatusCode();
             return await response.Content.ReadAsStringAsync(ct);
         }
-        catch (Exception ex)
+        // A cancelled run must stop, not look like the end of the watchlist. A timeout still counts as a failure.
+        catch (Exception ex) when (!ct.IsCancellationRequested)
         {
-            Console.WriteLine($"Error fetching {url}: {ex.Message}");
+            _logger.LogWarning("Error fetching {Url}: {Message}", url, ex.Message);
             return null;
         }
     }
