@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/FilmExpiryChecker.Cli/FilmExpiryChecker.Cli.csproj" />
+    <Project Path="src/FilmExpiryChecker.Core/FilmExpiryChecker.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/FilmExpiryChecker.Tests/FilmExpiryChecker.Tests.csproj" />
+  </Folder>
+</Solution>
