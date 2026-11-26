@@ -2,6 +2,7 @@ using FilmExpiryChecker.Storage;
 using FilmExpiryChecker.Web;
 using FilmExpiryChecker.Web.Components;
 using FilmExpiryChecker.Web.Refresh;
+using FilmExpiryChecker.Web.Settings;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -33,6 +34,10 @@ builder.Services.AddSingleton<LatestResults>();
 builder.Services.AddSingleton<RefreshService>();
 builder.Services.AddSingleton<IRefreshStatus>(services => services.GetRequiredService<RefreshService>());
 builder.Services.AddHostedService(services => services.GetRequiredService<RefreshService>());
+
+// The user's settings (and a signal when they change), and what the Settings page offers.
+builder.Services.AddSingleton<CurrentSettings>();
+builder.Services.AddSingleton<ServiceCatalog>();
 
 // Once a day: on starting, and whenever a page opens, refresh if the last success wasn't today.
 builder.Services.AddSingleton<AutoRefresh>();

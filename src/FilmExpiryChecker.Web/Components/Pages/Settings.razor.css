@@ -1,0 +1,126 @@
+.welcome {
+    background: #eef6f5;
+    border-left: 4px solid #2a9d8f;
+    padding: 0.9rem 1.2rem;
+    margin-bottom: 1.25rem;
+    font-size: 15px;
+    line-height: 1.45;
+}
+
+.notice {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    padding: 0.75rem 1.1rem;
+    margin-bottom: 1.25rem;
+    border-radius: 4px;
+    font-weight: 600;
+}
+
+.notice--ok { background: #eef6f5; color: #1d6b62; }
+.notice--warn { background: #fff4e0; color: #7a4a00; }
+.notice--error { background: #fdecee; color: #8a1c26; }
+
+.settings {
+    max-width: 44rem;
+}
+
+fieldset {
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 1rem 1.25rem 1.25rem;
+    margin: 0 0 1.25rem;
+    display: grid;
+    gap: 0.4rem;
+}
+
+legend {
+    font-weight: 700;
+    padding: 0 0.4rem;
+}
+
+label, .label {
+    font-weight: 600;
+    margin-top: 0.6rem;
+}
+
+    label.inline, label.service {
+        font-weight: normal;
+        margin-top: 0;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+input:not([type=checkbox]), select {
+    font: inherit;
+    padding: 0.4rem 0.55rem;
+    border: 1px solid #bbb;
+    border-radius: 4px;
+    max-width: 24rem;
+}
+
+input[type=number] {
+    width: 5rem;
+}
+
+.with-unit {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.services {
+    max-height: 18rem;
+    overflow-y: auto;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 0.5rem 0.75rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+    gap: 0.3rem 1rem;
+}
+
+.service--unlisted {
+    color: var(--muted);
+    font-style: italic;
+}
+
+.count {
+    font-weight: normal;
+    color: var(--muted);
+}
+
+.hint {
+    margin: 0.2rem 0 0;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.actions {
+    display: flex;
+    gap: 0.75rem;
+}
+
+.button {
+    background: var(--accent);
+    color: var(--paper);
+    border: none;
+    border-radius: 4px;
+    padding: 0.45rem 1.2rem;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+    .button:disabled {
+        opacity: 0.45;
+        cursor: default;
+    }
+
+.button--plain {
+    background: none;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+}

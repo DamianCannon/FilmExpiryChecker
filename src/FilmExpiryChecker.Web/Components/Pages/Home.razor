@@ -2,15 +2,17 @@
 @using FilmExpiryChecker.Storage
 @using FilmExpiryChecker.Web.Components.Results
 @using FilmExpiryChecker.Web.Refresh
+@using FilmExpiryChecker.Web.Settings
 @implements IDisposable
 @inject LatestResults Latest
 @inject IRefreshStatus Refresh
-@inject DataFolder Data
+@inject CurrentSettings Current
+@inject NavigationManager Navigation
 
 <PageTitle>Film Expiry Checker</PageTitle>
 
 @* Shows the last saved results straight away and never waits for a refresh; when one finishes, its results
-   replace these whole. *@
+   replace these whole. Changing your services or threshold in Settings regroups them at once. *@
 
 @if (_run is not null)
 {
@@ -36,17 +38,26 @@ else
     protected override void OnInitialized()
     {
         Load();
-        Latest.Changed += OnNewResults;
+
+        // First run: nothing to show and no username to fetch with, so start on Settings.
+        if (_run is null && string.IsNullOrWhiteSpace(_settings.Letterboxd.Username))
+        {
+            Navigation.NavigateTo("settings", replace: true);
+            return;
+        }
+
+        Latest.Changed += OnChanged;
+        Current.Changed += OnChanged;
         Refresh.Changed += OnRefreshChanged;
     }
 
     private void Load()
     {
         _run = Latest.Run;
-        _settings = SettingsStore.Load(Data.SettingsFile);
+        _settings = Current.Load();
     }
 
-    private void OnNewResults() => _ = InvokeAsync(() =>
+    private void OnChanged() => _ = InvokeAsync(() =>
     {
         Load();
         StateHasChanged();
@@ -61,7 +72,8 @@ else
 
     public void Dispose()
     {
-        Latest.Changed -= OnNewResults;
+        Latest.Changed -= OnChanged;
+        Current.Changed -= OnChanged;
         Refresh.Changed -= OnRefreshChanged;
     }
 }

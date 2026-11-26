@@ -52,6 +52,7 @@ public sealed class StatusBarSpecs : IDisposable
         _context.Services.AddSingleton<IRefreshStatus>(_refresh);
         _context.Services.AddSingleton(_latest);
         _context.Services.AddSingleton(data);
+        _context.Services.AddSingleton(new FilmExpiryChecker.Web.Settings.CurrentSettings(data));
         _context.Services.AddSingleton<TimeProvider>(new FixedClock(Now));
     }
 
