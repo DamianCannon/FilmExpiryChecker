@@ -99,6 +99,25 @@ public class LetterboxdScraperSpecs
     }
 
     [Fact]
+    public async Task An_unknown_username_answered_with_forbidden_is_an_empty_watchlist_not_an_outage()
+    {
+        // What letterboxd.com really answers for a user that doesn't exist (seen 26 Nov 2026).
+        var (scraper, _) = ScraperWith(_ => new HttpResponseMessage(System.Net.HttpStatusCode.Forbidden));
+
+        Assert.Empty(await scraper.GetWatchlistAsync());
+    }
+
+    [Fact]
+    public async Task Letterboxd_answering_with_a_server_error_says_so()
+    {
+        var (scraper, _) = ScraperWith(_ => new HttpResponseMessage(System.Net.HttpStatusCode.ServiceUnavailable));
+
+        var failed = await Assert.ThrowsAsync<RunFailedException>(() => scraper.GetWatchlistAsync());
+
+        Assert.Equal("Letterboxd isn't working properly right now (it answered 503). Try again later.", failed.Message);
+    }
+
+    [Fact]
     public async Task Losing_the_connection_after_page_one_keeps_the_films_so_far()
     {
         var (scraper, _) = ScraperWith(url =>

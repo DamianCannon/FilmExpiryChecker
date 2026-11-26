@@ -31,6 +31,7 @@ builder.Services.AddSingleton(_ =>
 // The refresh runs in the background; closing the app waits up to 30 s for it to stop and save what it has.
 builder.Services.AddSingleton<LatestResults>();
 builder.Services.AddSingleton<RefreshService>();
+builder.Services.AddSingleton<IRefreshStatus>(services => services.GetRequiredService<RefreshService>());
 builder.Services.AddHostedService(services => services.GetRequiredService<RefreshService>());
 builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = TimeSpan.FromSeconds(30));
 

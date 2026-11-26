@@ -1,0 +1,91 @@
+@using FilmExpiryChecker.Reporting
+@using FilmExpiryChecker.Storage
+@using FilmExpiryChecker.Web.Refresh
+@implements IDisposable
+@inject IRefreshStatus Refresh
+@inject LatestResults Latest
+@inject DataFolder Data
+@inject TimeProvider Time
+
+<div class="status" role="status">
+    <span class="status-text">@_line.Text</span>
+    @if (_line.Progress is double progress)
+    {
+        @* A <progress> with no value is the browser's "busy" bar, for steps whose length isn't known. *@
+        <progress class="status-progress" max="1" value="@(double.IsNaN(progress) ? null : progress)"></progress>
+    }
+    @if (_line.OfferRetry)
+    {
+        <button class="status-retry" type="button" @onclick="Retry">Retry</button>
+    }
+    @if (_line.PointToSettings)
+    {
+        <a class="status-settings" href="settings">Go to Settings</a>
+    }
+</div>
+
+@code {
+    private static readonly TimeSpan RenderAtMostEvery = TimeSpan.FromMilliseconds(150);
+
+    private StatusLine _line = new(string.Empty);
+    private string? _summaryFor;
+    private ResultsSummary? _summary;
+    private int _renderPending;
+    private Timer? _minuteTimer;
+
+    protected override void OnInitialized()
+    {
+        Compute();
+        Refresh.Changed += OnRefreshChanged;
+        Latest.Changed += OnResultsChanged;
+        // "today" becomes "yesterday" at midnight without anything else changing.
+        _minuteTimer = new Timer(_ => Schedule(), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
+    }
+
+    private void Retry() => Refresh.RequestRefresh();
+
+    private void OnRefreshChanged(RefreshState _) => Schedule();
+
+    private void OnResultsChanged() => Schedule();
+
+    // Progress can arrive hundreds of times a second (films answered from the cache); render a few times a second.
+    private void Schedule()
+    {
+        if (Interlocked.Exchange(ref _renderPending, 1) == 1) return;
+        _ = InvokeAsync(async () =>
+        {
+            await Task.Delay(RenderAtMostEvery);
+            Volatile.Write(ref _renderPending, 0);
+            Compute();
+            StateHasChanged();
+        });
+    }
+
+    private void Compute()
+    {
+        var run = Latest.Run;
+        if (run?.Id != _summaryFor)
+        {
+            _summaryFor = run?.Id;
+            _summary = run is null ? null : Summarise(run);
+        }
+
+        var usernameSet = !string.IsNullOrWhiteSpace(SettingsStore.Load(Data.SettingsFile).Letterboxd.Username);
+        _line = StatusText.For(Refresh.State, _summary, usernameSet, Time.GetUtcNow(), Time.LocalTimeZone);
+    }
+
+    private ResultsSummary Summarise(SavedRun run)
+    {
+        var results = run.Group(Time);
+        var leavingSoon = results.Count(r =>
+            r.Category is FilmCategory.LeavingSoonMyServices or FilmCategory.LeavingSoonOtherServices);
+        return new ResultsSummary(run.RanAt, results.Count, leavingSoon);
+    }
+
+    public void Dispose()
+    {
+        Refresh.Changed -= OnRefreshChanged;
+        Latest.Changed -= OnResultsChanged;
+        _minuteTimer?.Dispose();
+    }
+}

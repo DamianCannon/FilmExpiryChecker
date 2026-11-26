@@ -8,7 +8,7 @@ namespace FilmExpiryChecker.Web.Refresh;
 /// as it goes; never runs two at once. Shutting the app down cancels a refresh under way, which keeps the films
 /// already checked (the run saves its cache when cancelled) and waits for it to stop.
 /// </summary>
-public sealed class RefreshService : BackgroundService
+public sealed class RefreshService : BackgroundService, IRefreshStatus
 {
     private readonly HttpClient _http;
     private readonly DataFolder _data;

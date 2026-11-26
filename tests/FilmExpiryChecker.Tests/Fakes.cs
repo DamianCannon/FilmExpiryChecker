@@ -3,10 +3,15 @@ using System.Text;
 
 namespace FilmExpiryChecker.Tests;
 
-/// <summary>A clock stopped at one moment, so "now" never moves under a test.</summary>
-internal sealed class FixedClock(DateTimeOffset now) : TimeProvider
+/// <summary>
+/// A clock stopped at one moment, so "now" never moves under a test, in a chosen time zone (UTC unless given).
+/// This PC is on UTC in winter, so tests about "today" use another zone, or a UTC/local mix-up would pass unseen.
+/// </summary>
+internal sealed class FixedClock(DateTimeOffset now, TimeZoneInfo? zone = null) : TimeProvider
 {
-    public override DateTimeOffset GetUtcNow() => now;
+    public override DateTimeOffset GetUtcNow() => now.ToUniversalTime();
+
+    public override TimeZoneInfo LocalTimeZone => zone ?? TimeZoneInfo.Utc;
 }
 
 /// <summary>

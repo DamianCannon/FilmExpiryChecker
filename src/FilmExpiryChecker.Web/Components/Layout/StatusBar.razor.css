@@ -1,0 +1,26 @@
+.status {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.status-progress {
+    width: 12rem;
+    height: 0.6rem;
+    accent-color: var(--accent);
+}
+
+.status-retry {
+    background: none;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    border-radius: 4px;
+    padding: 0.1rem 0.7rem;
+    font: inherit;
+    cursor: pointer;
+}
+
+.status-settings {
+    color: var(--accent);
+}
