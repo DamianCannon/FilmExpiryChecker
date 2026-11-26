@@ -1,0 +1,74 @@
+/* The colours and layout of the report the command line has always written. */
+
+.summary {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 0.9rem 1.25rem;
+    margin-bottom: 1.75rem;
+    font-size: 13px;
+}
+
+    .summary span {
+        margin-right: 1.5rem;
+    }
+
+.urgent {
+    color: #e63946;
+    font-weight: 700;
+}
+
+h2 {
+    font-size: 16px;
+    margin: 2rem 0 0.5rem;
+    padding: 6px 12px;
+    border-radius: 4px;
+}
+
+.cat1 h2 { background: #e63946; color: #fff; }
+.cat2 h2 { background: #f4a261; color: #fff; }
+.cat3 h2 { background: #2a9d8f; color: #fff; }
+.cat4 h2 { background: #457b9d; color: #fff; }
+.cat5 h2 { background: #adb5bd; color: #fff; }
+.cat6 h2 { background: #dee2e6; color: #555; }
+
+.count {
+    font-size: 12px;
+    font-weight: normal;
+    opacity: 0.85;
+}
+
+table {
+    border-collapse: collapse;
+    width: 100%;
+    margin-bottom: 12px;
+    font-size: 13px;
+}
+
+th {
+    background: #343a40;
+    color: #fff;
+    text-align: left;
+    padding: 7px 10px;
+    white-space: nowrap;
+}
+
+td {
+    padding: 6px 10px;
+    border-bottom: 1px solid #dee2e6;
+    vertical-align: top;
+}
+
+tr:nth-child(even) td {
+    background: #f8f9fa;
+}
+
+td a {
+    color: inherit;
+}
+
+.title { min-width: 150px; }
+.year { color: #888; white-space: nowrap; }
+.expiry, .expiry-soon, .expiry-urgent { white-space: nowrap; }
+.expiry-urgent { color: #e63946; font-weight: 600; }
+.expiry-soon { color: #f4a261; font-weight: 600; }
