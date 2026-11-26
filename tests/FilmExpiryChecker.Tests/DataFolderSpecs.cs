@@ -110,6 +110,32 @@ public sealed class DataFolderSpecs : IDisposable
     }
 
     [Fact]
+    public void A_newer_appsettings_without_a_username_is_not_taken_for_the_settings()
+    {
+        // The web app's own appsettings.json is rebuilt every time, so it is always the newest; it holds no settings.
+        var cli = Legacy("cli", May);
+        var web = Path.Combine(_temp.Path, "web");
+        Write(Path.Combine(web, "appsettings.json"), November, """{ "Urls": "http://127.0.0.1:5187", "Logging": { "LogLevel": { "Default": "Information" } } }""");
+
+        var report = Data.Prepare([web, cli]);
+
+        Assert.Equal("film-fan", SettingsStore.Load(Data.SettingsFile).Letterboxd.Username);
+        Assert.Equal(Path.Combine(cli, "appsettings.json"), report.Settings);
+    }
+
+    [Fact]
+    public void An_unreadable_appsettings_is_skipped()
+    {
+        var cli = Legacy("cli", May);
+        var broken = Path.Combine(_temp.Path, "broken");
+        Write(Path.Combine(broken, "appsettings.json"), November, "{ not json");
+
+        Data.Prepare([broken, cli]);
+
+        Assert.Equal("film-fan", SettingsStore.Load(Data.SettingsFile).Letterboxd.Username);
+    }
+
+    [Fact]
     public void Reports_from_several_folders_are_merged_without_duplicates()
     {
         var a = Legacy("a", May, reports: ["one.csv", "two.csv"]);

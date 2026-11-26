@@ -69,7 +69,7 @@ public sealed class DataFolder
         }
 
         // settings.json marks the import as done, so it is written last: an import cut off part-way runs again.
-        var settings = Newest(folders, "appsettings.json");
+        var settings = NewestRealSettings(folders);
         SettingsStore.Save(SettingsFile, settings is null ? new AppSettings() : SettingsStore.Load(settings));
         report.Settings = settings;
 
@@ -89,6 +89,28 @@ public sealed class DataFolder
                .Where(f => f.Exists)
                .OrderByDescending(f => f.LastWriteTimeUtc)
                .FirstOrDefault()?.FullName;
+
+    /// <summary>
+    /// The newest appsettings.json that is really the CLI's settings: one with a Letterboxd username. Other
+    /// programs' appsettings.json (the web app's own, rebuilt every time and so always newest) are not.
+    /// </summary>
+    private static string? NewestRealSettings(IEnumerable<string> folders) =>
+        folders.Select(f => new FileInfo(Path.Combine(f, "appsettings.json")))
+               .Where(f => f.Exists && HasUsername(f.FullName))
+               .OrderByDescending(f => f.LastWriteTimeUtc)
+               .FirstOrDefault()?.FullName;
+
+    private static bool HasUsername(string path)
+    {
+        try
+        {
+            return !string.IsNullOrWhiteSpace(SettingsStore.Load(path).Letterboxd.Username);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
 
     private static string? CopyNewest(IEnumerable<string> folders, string name, string target)
     {
