@@ -146,6 +146,45 @@ public sealed class CheckRunnerSpecs : IDisposable
     }
 
     [Fact]
+    public async Task A_completed_run_is_saved_with_every_film_and_its_offers()
+    {
+        var result = await new CheckRunner(new HttpClient(Sites()), Data, time: InstantWaits.Instance).RunAsync(Settings());
+
+        var saved = new RunStore(Data).Latest();
+        Assert.NotNull(saved);
+        Assert.Equal(result.Run!.Id, saved.Id);
+        Assert.Equal(5, saved.Films.Count);
+        Assert.All(saved.Films, f => Assert.Equal(8, f.Offers!.Single().PackageId));
+        Assert.Equal("example-user", saved.Username);
+    }
+
+    [Fact]
+    public async Task A_cancelled_run_is_not_saved()
+    {
+        var progress = new RecordedProgress<RunProgress>(p =>
+        {
+            if (p.Step == RunStep.CheckingFilms && p.Done == 3) _cancel.Cancel();
+        });
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            new CheckRunner(new HttpClient(Sites()), Data, time: InstantWaits.Instance).RunAsync(Settings(), progress, _cancel.Token));
+
+        Assert.Empty(new RunStore(Data).List());
+    }
+
+    [Fact]
+    public async Task A_run_that_fails_is_not_saved()
+    {
+        // A failed search counts as "not found", but a failure fetching the services stops the run.
+        var http = Sites((request, body) => body.Contains("GetPackages") ? throw new InvalidOperationException("broken") : null);
+
+        await Assert.ThrowsAnyAsync<Exception>(() =>
+            new CheckRunner(new HttpClient(http), Data, time: InstantWaits.Instance).RunAsync(Settings()));
+
+        Assert.Empty(new RunStore(Data).List());
+    }
+
+    [Fact]
     public async Task An_empty_watchlist_is_its_own_outcome_and_asks_JustWatch_nothing()
     {
         var http = Sites((request, _) =>
