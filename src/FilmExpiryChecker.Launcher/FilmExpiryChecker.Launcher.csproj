@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Film Expiry Checker opened with one click: starts the app, shows it in a window of its own
+       (WebView2, Edge's engine, part of Windows 11) and stops the app when that window closes. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <RootNamespace>FilmExpiryChecker.Launcher</RootNamespace>
+    <AssemblyName>FilmExpiryChecker.Launcher</AssemblyName>
+    <!-- Windows Forms needs culture data, even where the rest of the solution is invariant. -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <!-- For LibraryImport's generated marshalling of the few Windows calls. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- WebView2 ships a WPF control this Windows Forms window never loads; its WindowsBase clash is harmless. -->
+    <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);MSB3277</MSBuildWarningsAsMessages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="app.ico" LogicalName="app.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FilmExpiryChecker.Launching\FilmExpiryChecker.Launching.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Ask before adding; pin an exact version at least two weeks old. Approved by the owner, 27 Nov 2026. -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
+  </ItemGroup>
+
+</Project>
