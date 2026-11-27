@@ -84,14 +84,36 @@ internal sealed class Opening : ApplicationContext
         // no window (found in a trial: an orphaned app, and every later click opened onto it and never stopped it).
         _starting.FormClosing += async (_, e) =>
         {
-            if (_window is not null || _closingDown || !_started || _app is null) return;
-            e.Cancel = true;
+            _log($"Starting window asked to close ({e.CloseReason}); app window {(_window is null ? "not open" : "open")}, started {_started}, closing down {_closingDown}.");
+            // Once the app's window is open, the starting window is only hidden, never closed: it's needed again
+            // to show "Stopping…" (found by hand, #17: closing it then crashed the launcher at the app window's close).
+            // (A close sent by another program, as Task Manager's End task does, comes as TaskManagerClosing; that's
+            // hidden too, so only Windows shutting down closes it.)
+            if (_window is not null)
+            {
+                if (!_closingDown && e.CloseReason is not CloseReason.WindowsShutDown)
+                {
+                    e.Cancel = true;
+                    _starting.Hide();
+                }
+                return;
+            }
+            if (_closingDown) return;
             _closingDown = true;
+            // Closed before the app was started (checking, or rebuilding): the opening stops there; nothing is
+            // started (found by hand, #17: it went on to start the app with no window to close it from).
+            if (!_started || _app is null) return;
+            e.Cancel = true;
             _starting.Step($"Stopping {Launch.AppName}…");
             await _app.StopAsync();
+            _log("Stopped.");
             ExitThread();
         };
-        _starting.FormClosed += (_, _) => { if (_window is null) ExitThread(); };
+        _starting.FormClosed += (_, e) =>
+        {
+            _log($"Starting window closed ({e.CloseReason}).");
+            if (_window is null) ExitThread();
+        };
         _app = root is null ? null : new TheApp(root, appArguments, log);
         _forward = ThreadPool.RegisterWaitForSingleObject(bringForward, (_, _) => _starting.BeginInvoke(() =>
         {
@@ -112,6 +134,8 @@ internal sealed class Opening : ApplicationContext
         _starting.Step("Checking…");
         var down = await TheApp.PrerequisiteDownAsync();
         var launch = Launch.Decide(await _app.AnsweringAsync(), down);
+        // After every wait: if the starting window was closed meanwhile, the opening stops here.
+        if (_closingDown) return;
         _log($"Opening: {launch}");
         switch (launch)
         {
@@ -125,11 +149,14 @@ internal sealed class Opening : ApplicationContext
                 if (_app.NeedsRebuilding())
                 {
                     _starting.Step($"Updating {Launch.AppName} to the latest code: rebuilding…");
-                    if (await _app.RebuildAsync() is { } failed)
+                    var failed = await _app.RebuildAsync();
+                    if (_closingDown) return;
+                    if (failed is not null)
                     {
                         _log($"Rebuild failed: {failed}");
                         _starting.Step($"The latest code didn't build ({failed.Split(Environment.NewLine)[0]}), so the last build that worked is opening.");
                         await Task.Delay(TimeSpan.FromSeconds(4));
+                        if (_closingDown) return;
                     }
                 }
                 _starting.Step($"Starting {Launch.AppName}…");
@@ -158,10 +185,15 @@ internal sealed class Opening : ApplicationContext
     // The window closed: the app is stopped if the launcher started it; one started some other way is left running.
     private async Task ClosedAsync()
     {
+        _closingDown = true;
         if (_started && _app is not null)
         {
-            _starting.Step($"Stopping {Launch.AppName}… If it has work under way, that finishes first.");
-            _starting.Show();
+            // The starting window shows "Stopping…" while it waits, if it's still there (Windows may have closed it).
+            if (!_starting.IsDisposed)
+            {
+                _starting.Step($"Stopping {Launch.AppName}… If it has work under way, that finishes first.");
+                _starting.Show();
+            }
             await _app.StopAsync();
             _log("Stopped.");
         }
