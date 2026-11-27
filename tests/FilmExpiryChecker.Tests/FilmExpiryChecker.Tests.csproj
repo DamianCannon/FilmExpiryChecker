@@ -18,6 +18,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\FilmExpiryChecker.Core\FilmExpiryChecker.Core.csproj" />
     <ProjectReference Include="..\..\src\FilmExpiryChecker.Web\FilmExpiryChecker.Web.csproj" />
+    <ProjectReference Include="..\..\src\FilmExpiryChecker.Launching\FilmExpiryChecker.Launching.csproj" />
   </ItemGroup>
 
   <ItemGroup>

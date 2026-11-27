@@ -2,6 +2,8 @@
   <Folder Name="/src/">
     <Project Path="src/FilmExpiryChecker.Cli/FilmExpiryChecker.Cli.csproj" />
     <Project Path="src/FilmExpiryChecker.Core/FilmExpiryChecker.Core.csproj" />
+    <Project Path="src/FilmExpiryChecker.Launcher/FilmExpiryChecker.Launcher.csproj" />
+    <Project Path="src/FilmExpiryChecker.Launching/FilmExpiryChecker.Launching.csproj" />
     <Project Path="src/FilmExpiryChecker.Web/FilmExpiryChecker.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">
