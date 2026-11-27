@@ -66,6 +66,39 @@ public sealed class WebAppSpecs : IDisposable
     }
 
     [Fact]
+    public async Task The_page_names_its_icon_for_the_browser_tab()
+    {
+        var html = await _app.CreateClient().GetStringAsync("/");
+
+        Assert.Matches("<link rel=\"icon\" href=\"favicon.ico\" sizes=\"any\"\\s*/?>", html);
+        Assert.Matches("<link rel=\"apple-touch-icon\" href=\"icon-256.png\"\\s*/?>", html);
+    }
+
+    [Theory]
+    [InlineData("/favicon.ico")]
+    [InlineData("/icon-256.png")]
+    public async Task The_icons_are_served(string path)
+    {
+        var response = await _app.CreateClient().GetAsync(path);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True((await response.Content.ReadAsByteArrayAsync()).Length > 1000);
+    }
+
+    [Fact]
+    public void The_launcher_and_the_browser_tab_use_the_same_icon()
+    {
+        var repo = AppContext.BaseDirectory;
+        while (!File.Exists(Path.Combine(repo, "FilmExpiryChecker.slnx"))) repo = Path.GetDirectoryName(repo)!;
+
+        var launcher = File.ReadAllBytes(Path.Combine(repo, "src", "FilmExpiryChecker.Launcher", "app.ico"));
+        var favicon = File.ReadAllBytes(Path.Combine(repo, "src", "FilmExpiryChecker.Web", "wwwroot", "favicon.ico"));
+
+        Assert.Equal(launcher, favicon);
+        Assert.Equal(new byte[] { 0, 0, 1, 0, 6, 0 }, launcher[..6]);   // an .ico holding six sizes
+    }
+
+    [Fact]
     public async Task Starting_the_app_makes_the_data_folder_ready()
     {
         await _app.CreateClient().GetAsync("/");
