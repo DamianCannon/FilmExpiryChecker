@@ -142,15 +142,19 @@
     private async Task LoadServices()
     {
         _services = null;
-        _services = await Catalog.ServicesIn(_edit.JustWatch.Region);
+        var services = await Catalog.ServicesIn(_edit.JustWatch.Region);
+        // The order is set once, as the list loads: ticked first, then A to Z. Ticking or unticking then moves
+        // nothing, so the list doesn't jump under the pointer (found by the owner, #39).
+        _services = services
+            .OrderByDescending(s => IsTicked(s.Id))
+            .ThenBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     private string CountryName => ServiceCatalog.Countries.FirstOrDefault(c => c.Code == _edit.JustWatch.Region)?.Name ?? _edit.JustWatch.Region;
 
     private IEnumerable<StreamingService> ShownServices => (_services ?? [])
-        .Where(s => _search.Length == 0 || s.Name.Contains(_search.Trim(), StringComparison.OrdinalIgnoreCase))
-        .OrderByDescending(s => IsTicked(s.Id))
-        .ThenBy(s => s.Name, StringComparer.OrdinalIgnoreCase);
+        .Where(s => _search.Length == 0 || s.Name.Contains(_search.Trim(), StringComparison.OrdinalIgnoreCase));
 
     private IEnumerable<string> UnlistedTicked => _search.Length > 0 || _services is null ? []
         : _edit.JustWatch.MyServices.Where(id => _services.All(s => s.Id != id));
