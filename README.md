@@ -18,6 +18,8 @@ Each service shows how it's offered: 📺 subscription, 🆓 free, 💷 rent or 
 
 It runs on your own PC as a desktop app: one click opens it in its own window, pinned to the taskbar.
 
+![The results page: films leaving soon on your services and elsewhere, each with how many days are left and where to watch it, and the status bar saying when the results were updated](docs/screenshot.jpg)
+
 ## Set up (Windows 11)
 
 You need the [.NET 10 SDK](https://dotnet.microsoft.com/download). WebView2, which draws the window, is already part of Windows 11.
