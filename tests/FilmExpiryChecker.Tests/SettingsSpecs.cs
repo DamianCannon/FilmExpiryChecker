@@ -148,6 +148,44 @@ public sealed class SettingsPageSpecs : IDisposable
         Assert.Equal(new[] { "337", "8" }, Saved.JustWatch.MyServices.Order());
     }
 
+    // ── The order of the services (#39) ─────────────────────────────────────────
+
+    private static string[] ServiceNames(IRenderedComponent<Settings> page) =>
+        page.FindAll("label.service").Select(l => l.TextContent.Trim()).ToArray();
+
+    [Fact]
+    public void On_opening_the_ticked_services_come_first()
+    {
+        WithUser();   // Netflix ticked
+
+        Assert.Equal(new[] { "Netflix", "Disney Plus" }, ServiceNames(Open()));
+    }
+
+    [Fact]
+    public void Ticking_a_service_leaves_the_list_where_it_is()
+    {
+        WithUser();
+        var page = Open();
+        var before = ServiceNames(page);
+
+        Tick(page, "Disney Plus", true);
+
+        Assert.Equal(before, ServiceNames(page));
+    }
+
+    [Fact]
+    public void Unticking_a_service_at_the_top_leaves_the_list_where_it_is()
+    {
+        WithUser();
+        var page = Open();
+        var before = ServiceNames(page);
+
+        Tick(page, "Netflix", false);
+
+        Assert.Equal(before, ServiceNames(page));
+        Assert.False(page.FindAll("label.service").First().QuerySelector("input")!.HasAttribute("checked"));
+    }
+
     // ── Checking the username ───────────────────────────────────────────────────
 
     [Fact]
