@@ -24,6 +24,10 @@ public sealed class JustWatchClientSpecs : IDisposable
 
     /// <summary>A search response shaped like JustWatch's GraphQL; each result's one offer is on its own package.</summary>
     private static string Results(params (string Title, int Year, int PackageId, string? Imdb)[] results) =>
+        Typed(results.Select(r => (r.Title, r.Year, r.PackageId, r.Imdb, "MOVIE")).ToArray());
+
+    /// <summary>As <see cref="Results"/>, with each result's JustWatch type ("MOVIE", "SHOW").</summary>
+    private static string Typed(params (string Title, int Year, int PackageId, string? Imdb, string Type)[] results) =>
         JsonSerializer.Serialize(new
         {
             data = new
@@ -35,7 +39,7 @@ public sealed class JustWatchClientSpecs : IDisposable
                         node = new
                         {
                             id = "tm" + r.PackageId,
-                            objectType = "MOVIE",
+                            objectType = r.Type,
                             content = new
                             {
                                 title = r.Title,
@@ -84,11 +88,133 @@ public sealed class JustWatchClientSpecs : IDisposable
     }
 
     [Fact]
-    public async Task With_no_year_match_the_first_title_match_is_taken()
+    public async Task With_no_exact_year_the_same_title_a_year_out_is_taken()
     {
-        var (client, _) = ClientAnswering(Results(("Something Else", 1999, 1, null), ("Cloud", 2024, 2, null), ("Cloud", 2020, 3, null)));
+        var (client, _) = ClientAnswering(Results(("Something Else", 1999, 1, null), ("Cloud", 2024, 2, null), ("Cloud", 2000, 3, null)));
 
-        Assert.Equal(2, MatchedPackage(await client.GetOffersAsync(Film("Cloud", 1999))));
+        Assert.Equal(3, MatchedPackage(await client.GetOffersAsync(Film("Cloud", 1999))));
+    }
+
+    [Fact]
+    public async Task The_same_title_from_another_era_isnt_taken_without_its_IMDb_ID()
+    {
+        var (client, _) = ClientAnswering(Results(("Nosferatu", 2024, 2, "tt5040012")), (_, _) => Task.FromResult<string?>("tt0013442"));
+
+        Assert.Null(await client.GetOffersAsync(Film("Nosferatu", 1922)));
+    }
+
+    [Fact]
+    public async Task The_same_title_from_another_era_is_taken_when_its_IMDb_ID_agrees()
+    {
+        var (client, _) = ClientAnswering(Results(("Nosferatu", 2024, 2, "tt5040012"), ("Nosferatu", 1979, 3, "tt0079641")),
+            (_, _) => Task.FromResult<string?>("tt0079641"));
+
+        Assert.Equal(3, MatchedPackage(await client.GetOffersAsync(Film("Nosferatu", 1922))));
+    }
+
+    [Fact]
+    public async Task A_TV_series_with_the_same_title_isnt_the_film()
+    {
+        var (client, _) = ClientAnswering(Typed(("Fargo", 1996, 1, null, "SHOW"), ("Fargo", 1996, 2, null, "MOVIE")));
+
+        Assert.Equal(2, MatchedPackage(await client.GetOffersAsync(Film("Fargo", 1996))));
+    }
+
+    [Fact]
+    public async Task A_series_with_the_films_own_IMDb_ID_is_the_film()
+    {
+        // Letterboxd lists some miniseries as films; JustWatch calls them shows.
+        var (client, _) = ClientAnswering(Typed(("O.J.: Made in America", 2016, 4, "tt5275892", "SHOW")),
+            (_, _) => Task.FromResult<string?>("tt5275892"));
+
+        Assert.Equal(4, MatchedPackage(await client.GetOffersAsync(Film("O.J.: Made in America", 2016))));
+    }
+
+    [Fact]
+    public async Task A_title_a_year_out_whose_IMDb_ID_is_another_films_isnt_taken()
+    {
+        var (client, _) = ClientAnswering(Results(("Beast", 2022, 2, "tt13207736")), (_, _) => Task.FromResult<string?>("tt13028258"));
+
+        Assert.Null(await client.GetOffersAsync(Film("The Beast", 2023)));
+    }
+
+    [Fact]
+    public async Task A_longer_title_whose_IMDb_ID_is_another_films_isnt_taken()
+    {
+        var (client, _) = ClientAnswering(
+            Typed(("The Beatles: Get Back - The Rooftop Concert", 2022, 3, "tt16378298", "MOVIE"), ("The Beatles: Get Back", 2021, 4, "tt9735318", "SHOW")),
+            (_, _) => Task.FromResult<string?>("tt9735318"));
+
+        Assert.Equal(4, MatchedPackage(await client.GetOffersAsync(Film("The Beatles: Get Back", 2021))));
+    }
+
+    /// <summary>As <see cref="Typed"/>, but the first result has no offers.</summary>
+    private static string FirstWithoutOffers(params (string Title, int Year, int PackageId, string? Imdb, string Type)[] results)
+    {
+        var json = System.Text.Json.Nodes.JsonNode.Parse(Typed(results))!;
+        json["data"]!["popularTitles"]!["edges"]![0]!["node"]!["offers"] = new System.Text.Json.Nodes.JsonArray();
+        return json.ToJsonString();
+    }
+
+    [Fact]
+    public async Task A_film_with_no_offers_takes_them_from_its_series_twin_of_the_same_year()
+    {
+        var (client, _) = ClientAnswering(
+            FirstWithoutOffers(("O.J.: Made in America", 2016, 1, "tt5275892", "MOVIE"), ("O.J.: Made in America", 2016, 4, "tt13320728", "SHOW")),
+            (_, _) => Task.FromResult<string?>("tt5275892"));
+
+        var found = await client.LookUpAsync(Film("O.J.: Made in America", 2016));
+
+        Assert.Equal(4, MatchedPackage(found.Offers));
+        Assert.Equal("tm4", found.Match!.JustWatchId);
+    }
+
+    [Fact]
+    public async Task A_film_with_no_offers_takes_them_from_a_twin_listing_differing_only_in_punctuation()
+    {
+        var (client, _) = ClientAnswering(
+            FirstWithoutOffers(("Time Travel Is Dangerous", 2025, 1, "tt1111111", "MOVIE"), ("Time Travel Is Dangerous!", 2025, 6, null, "MOVIE")),
+            (_, _) => Task.FromResult<string?>("tt1111111"));
+
+        Assert.Equal(6, MatchedPackage(await client.GetOffersAsync(Film("Time Travel Is Dangerous!", 2024))));
+    }
+
+    [Fact]
+    public async Task A_film_with_no_offers_doesnt_take_a_series_from_another_year()
+    {
+        var (client, _) = ClientAnswering(
+            FirstWithoutOffers(("After Life", 1998, 1, null, "MOVIE"), ("After Life", 2019, 4, null, "SHOW")));
+
+        Assert.Empty((await client.GetOffersAsync(Film("After Life", 1998)))!);
+    }
+
+    [Fact]
+    public async Task Only_a_TV_series_with_the_title_finds_nothing()
+    {
+        var (client, _) = ClientAnswering(Typed(("Shogun", 1980, 1, null, "SHOW")));
+
+        Assert.Null(await client.GetOffersAsync(Film("Shogun", 1980)));
+    }
+
+    [Fact]
+    public async Task A_longer_title_from_another_year_isnt_a_match()
+    {
+        var (client, _) = ClientAnswering(Results(("Alien: Romulus", 2024, 5, null)));
+
+        Assert.Null(await client.GetOffersAsync(Film("Alien", 1979)));
+    }
+
+    [Fact]
+    public async Task The_JustWatch_title_matched_is_given_and_kept_in_the_cache()
+    {
+        var (client, _) = ClientAnswering(Results(("High and Low", 1963, 2, null)));
+
+        var first = await client.LookUpAsync(Film("High and Low", 1963));
+        var again = await client.LookUpAsync(Film("High and Low", 1963));
+
+        Assert.Equal(new TitleMatch("tm2", "High and Low", 1963), first.Match);
+        Assert.Equal(first.Match, again.Match);
+        Assert.Equal(1, client.Fetched);
     }
 
     [Theory]

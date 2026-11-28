@@ -96,12 +96,13 @@ public class JustWatchCache
         return !mine || age < MineCheckedEvery;
     }
 
-    public void Set(string filmId, List<Offer>? offers)
+    public void Set(string filmId, List<Offer>? offers, TitleMatch? match = null)
     {
         _store[Key(filmId)] = new CachedFilmData
         {
             CachedAt = _time.GetUtcNow().UtcDateTime,
-            Offers = offers
+            Offers = offers,
+            Match = match
         };
     }
 

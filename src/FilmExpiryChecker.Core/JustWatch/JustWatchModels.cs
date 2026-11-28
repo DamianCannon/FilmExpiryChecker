@@ -108,4 +108,13 @@ public class CachedFilmData
 
     /// <summary>Null means JustWatch returned no match for this film.</summary>
     public List<Offer>? Offers { get; set; }
+
+    /// <summary>Which JustWatch title the film was matched to, so a wrong match can be seen (#48).</summary>
+    public TitleMatch? Match { get; set; }
 }
+
+/// <summary>The JustWatch title a watchlist film was matched to.</summary>
+public sealed record TitleMatch(string JustWatchId, string Title, int? Year);
+
+/// <summary>A film looked up on JustWatch: its offers (null if no match) and what it was matched to.</summary>
+public sealed record FilmLookup(List<Offer>? Offers, TitleMatch? Match);

@@ -59,6 +59,17 @@ public sealed class CheckRunnerSpecs : IDisposable
     }
 
     [Fact]
+    public async Task The_saved_run_says_which_JustWatch_title_each_film_was_matched_to()
+    {
+        await new CheckRunner(new HttpClient(Sites()), Data, time: InstantWaits.Instance).RunAsync(Settings());
+
+        var saved = new RunStore(Data).Latest()!;
+
+        Assert.All(saved.Films, f => Assert.Equal("tm1", f.Match?.JustWatchId));
+        Assert.All(saved.Films, f => Assert.Equal(f.Film.Title, f.Match!.Title));   // the fake answers with the title searched
+    }
+
+    [Fact]
     public async Task Reading_the_watchlist_reports_each_page_and_the_films_found_so_far()
     {
         var progress = new RecordedProgress<RunProgress>();

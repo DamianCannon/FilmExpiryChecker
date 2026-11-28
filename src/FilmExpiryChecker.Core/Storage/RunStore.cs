@@ -47,6 +47,10 @@ public sealed class SavedFilm
 
     /// <summary>Null when JustWatch had no match; empty when it matched but nothing offers it.</summary>
     public List<Offer>? Offers { get; set; }
+
+    /// <summary>The JustWatch title the offers are from, so a wrong match can be seen (#48). Null for runs from
+    /// before it was kept, and for films not found.</summary>
+    public TitleMatch? Match { get; set; }
 }
 
 /// <summary>A saved run's id and when it ran, without loading it.</summary>
