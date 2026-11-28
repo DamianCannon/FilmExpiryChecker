@@ -16,11 +16,14 @@ internal sealed class FakeRefreshStatus : IRefreshStatus
     public event Action<RefreshState>? Changed;
     public int Requests { get; private set; }
 
-    public bool RequestRefresh()
+    public bool RequestRefresh(bool afterCurrent = false)
     {
         Requests++;
+        AskedAfterCurrent |= afterCurrent;
         return true;
     }
+
+    public bool AskedAfterCurrent { get; private set; }
 
     /// <summary>Changes the state from a background thread, as the real service does.</summary>
     public Task Push(RefreshState state) => Task.Run(() =>

@@ -201,8 +201,8 @@
         switch (effect)
         {
             case SettingsEffect.Refresh when Latest.Run is null:
-                // Nothing to show yet: start the first refresh and go to the results, where its progress shows.
-                Refresh.RequestRefresh();
+                // Nothing to show yet: start the first refresh (after any under way, #47) and go to the results.
+                Refresh.RequestRefresh(afterCurrent: true);
                 Navigation.NavigateTo("");
                 break;
             case SettingsEffect.Refresh:
@@ -244,7 +244,8 @@
 
     private void RefreshNow()
     {
-        Refresh.RequestRefresh();
+        // A refresh already under way uses the old settings, so another follows it (#47).
+        Refresh.RequestRefresh(afterCurrent: true);
         Navigation.NavigateTo("");
     }
 

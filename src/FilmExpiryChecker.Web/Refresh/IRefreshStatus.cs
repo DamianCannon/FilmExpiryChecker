@@ -9,5 +9,7 @@ public interface IRefreshStatus
     event Action<RefreshState>? Changed;
 
     /// <summary>Starts a refresh unless one is already running. Returns whether it started one.</summary>
-    bool RequestRefresh();
+    /// <param name="afterCurrent">If one is running, start another as soon as it ends: for a change of settings
+    /// that makes the running one out of date (#47). Never more than one waiting, never two at once.</param>
+    bool RequestRefresh(bool afterCurrent = false);
 }

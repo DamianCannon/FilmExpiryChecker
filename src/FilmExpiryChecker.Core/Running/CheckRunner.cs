@@ -90,7 +90,7 @@ public sealed class CheckRunner(
 
         var cache = new JustWatchCache(
             data.JustWatchCacheFile, settings.Cache.ExpiryDays, _loggers.CreateLogger<JustWatchCache>(), _time,
-            settings.JustWatch.MyServices);
+            settings.JustWatch.MyServices, settings.JustWatch.Region);
         var client = new JustWatchClient(
             http, settings.JustWatch.Region, cache, ResolveImdbId, _loggers.CreateLogger<JustWatchClient>(), _time);
 

@@ -20,7 +20,8 @@ public class ReportBuilder
         TimeProvider? timeProvider = null,
         Action<string>? onUnknownType = null)
     {
-        _myServiceIds = new HashSet<int>(myServiceIds.Select(int.Parse));
+        // A hand-edited id that isn't a number is skipped, not thrown on every grouping (#47).
+        _myServiceIds = myServiceIds.Select(id => int.TryParse(id, out var n) ? n : (int?)null).OfType<int>().ToHashSet();
         _providerNames = allProviders.ToDictionary(p => p.PackageId, p => p.ClearName);
         _expiringSoonDays = expiringSoonDays;
         _time = timeProvider ?? TimeProvider.System;

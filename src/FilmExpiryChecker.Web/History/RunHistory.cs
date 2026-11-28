@@ -7,7 +7,7 @@ using FilmExpiryChecker.Web.Settings;
 namespace FilmExpiryChecker.Web.History;
 
 /// <summary>One saved run as the History page lists it, counted with the current settings.</summary>
-public sealed record RunSummary(string Id, DateTimeOffset RanAt, int Films, int OnMyServices, int LeavingSoon);
+public sealed record RunSummary(string Id, DateTimeOffset RanAt, int Films, int OnMyServices, int LeavingSoon, string Username = "", string Region = "");
 
 /// <summary>An HTML or CSV report the command line wrote before the app existed.</summary>
 public sealed record OldReport(string FileName, DateTime WrittenAt);
@@ -38,7 +38,8 @@ public sealed class RunHistory(DataFolder data, CurrentSettings settings, Latest
         var results = Group(run);
         var summary = new RunSummary(id, run.RanAt, results.Count,
             results.Count(r => r.Category is FilmCategory.AvailableMyServices or FilmCategory.LeavingSoonMyServices),
-            results.Count(r => r.Category is FilmCategory.LeavingSoonMyServices or FilmCategory.LeavingSoonOtherServices));
+            results.Count(r => r.Category is FilmCategory.LeavingSoonMyServices or FilmCategory.LeavingSoonOtherServices),
+            run.Username, run.Region);
         _summaries[(id, key)] = summary;
         return summary;
     }

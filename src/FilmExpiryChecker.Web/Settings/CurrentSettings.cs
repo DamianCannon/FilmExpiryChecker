@@ -20,6 +20,9 @@ public sealed class CurrentSettings(DataFolder data)
 
     public bool UsernameSet => !string.IsNullOrWhiteSpace(Load().Letterboxd.Username);
 
+    /// <summary>Why settings.json can't be read (so the defaults are in use), or null.</summary>
+    public string? Problem => SettingsStore.Problem(data.SettingsFile);
+
     /// <summary>Saves the settings and says what that means for the results.</summary>
     public SettingsEffect Save(AppSettings settings)
     {

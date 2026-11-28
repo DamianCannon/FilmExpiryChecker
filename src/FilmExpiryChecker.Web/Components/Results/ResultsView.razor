@@ -5,6 +5,11 @@
 @* One saved run, grouped as the report always has been: leaving soon first (soonest at the top), then what's
    available, then the rest. "Days left" counts from now, not from when the run was fetched. *@
 
+@if (ForOthers is { } note)
+{
+    <div class="for-others" role="note">@note</div>
+}
+
 <div class="summary">
     <span>Films on your watchlist: <strong>@_results.Count</strong></span>
     <span>On your services: <strong>@_onMine</strong></span>
@@ -80,6 +85,24 @@
 
     /// <summary>How many days ahead counts as "leaving soon"; the run's own if not given.</summary>
     [Parameter] public int? ExpiringSoonDays { get; set; }
+
+    /// <summary>The username and country now in Settings: if the run was for others, it says so (#47).</summary>
+    [Parameter] public string? CurrentUsername { get; set; }
+
+    [Parameter] public string? CurrentRegion { get; set; }
+
+    private string? ForOthers =>
+        CurrentUsername is null || CurrentRegion is null
+        || (string.Equals(Run.Username, CurrentUsername, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(Run.Region, CurrentRegion, StringComparison.OrdinalIgnoreCase))
+            ? null
+            : $"These results are for {Who(Run.Username, Run.Region)}, but your settings are now for {Who(CurrentUsername, CurrentRegion)}. Refresh to see yours.";
+
+    private static string Who(string username, string region)
+    {
+        var country = region.Length == 2 ? new System.Globalization.RegionInfo(region).EnglishName : region;
+        return $"{(username.Length == 0 ? "no username" : username)} in {country}";
+    }
 
     private List<FilmResult> _results = new();
     private List<IGrouping<FilmCategory, FilmResult>> _groups = new();
