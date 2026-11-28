@@ -20,7 +20,7 @@
 {
     var look = Look(group.Key);
     <section class="category @look.Css" @key="group.Key">
-        <h2>@look.Icon @group.First().CategoryDisplay <span class="count">(@Films(group.Count()))</span></h2>
+        <h2><span class="group-icon" aria-hidden="true">@look.Icon</span> @group.First().CategoryDisplay <span class="count">(@Films(group.Count()))</span></h2>
         <table>
             <thead>
                 <tr>

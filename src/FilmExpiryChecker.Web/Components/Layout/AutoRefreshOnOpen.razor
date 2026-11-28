@@ -1,13 +1,24 @@
 @using FilmExpiryChecker.Web.Refresh
+@implements IDisposable
 @inject AutoRefresh Auto
+@inject TimeProvider Time
 
-@* Renders nothing. Each time a page opens (and is live), checks whether today's refresh is still due, so a
-   window left open overnight catches up the next time it's looked at. *@
+@* Renders nothing. Each time a page opens (and is live), checks whether today's refresh is still due, and checks
+   again every few minutes while it stays open, so a window left open overnight refreshes the next day by itself
+   (#49), not only when a page is opened. *@
 
 @code {
+    /// <summary>How often a page left open checks whether today's refresh is due.</summary>
+    public static readonly TimeSpan CheckEvery = TimeSpan.FromMinutes(5);
+
+    private ITimer? _timer;
+
     protected override void OnAfterRender(bool firstRender)
     {
-        if (firstRender && RendererInfo.IsInteractive)
-            Auto.CheckNow();
+        if (!firstRender || !RendererInfo.IsInteractive) return;
+        Auto.CheckNow();
+        _timer = Time.CreateTimer(_ => _ = InvokeAsync(() => Auto.CheckNow()), null, CheckEvery, CheckEvery);
     }
+
+    public void Dispose() => _timer?.Dispose();
 }

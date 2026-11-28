@@ -100,7 +100,8 @@ public sealed class RunStore(DataFolder data)
         {
             return JsonSerializer.Deserialize<SavedRun>(File.ReadAllText(path), Json);
         }
-        catch (JsonException)
+        // Being written, or open in another program: skipped this time rather than taking the page down (#49).
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
         {
             return null;
         }

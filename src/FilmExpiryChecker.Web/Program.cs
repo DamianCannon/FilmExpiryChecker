@@ -45,6 +45,7 @@ builder.Services.AddSingleton<AutoRefresh>();
 builder.Services.AddHostedService<AutoRefreshOnStart>();
 builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = TimeSpan.FromSeconds(30));
 
+
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
@@ -55,12 +56,22 @@ if (!app.Environment.IsDevelopment())
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
 }
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
+
+// Served only to this PC (AllowedHosts in appsettings.json, against DNS rebinding), and never inside another
+// site's frame (#49).
+app.Use((context, next) =>
+{
+    context.Response.Headers.XFrameOptions = "DENY";
+    context.Response.Headers.ContentSecurityPolicy = "frame-ancestors 'none'";
+    return next(context);
+});
 app.UseAntiforgery();
 
 app.MapStaticAssets();
 FilmExpiryChecker.Web.History.Downloads.MapDownloads(app);
 app.MapRazorComponents<App>()
-    .AddInteractiveServerRenderMode();
+    // Blazor would add "frame-ancestors 'self'" beside the app's 'none' (above): leave it to the app.
+    .AddInteractiveServerRenderMode(options => options.ContentSecurityFrameAncestorsPolicy = null);
 
 app.Run();
 

@@ -160,7 +160,7 @@ internal sealed class Opening : ApplicationContext
                     }
                 }
                 _starting.Step($"Starting {Launch.AppName}…");
-                if (!_app.Start(Path.Combine(_logs, $"app-{DateTime.Now:yyyy-MM-dd-HHmm}.log")))
+                if (!_app.Start(Path.Combine(_logs, $"app-output-{DateTime.Now:yyyy-MM-dd-HHmm}.log")))
                 {
                     _starting.Stopped($"{Launch.AppName} isn't built yet: run dotnet build -c Release once, then try again.");
                     return;

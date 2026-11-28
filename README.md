@@ -43,7 +43,7 @@ You need the [.NET 10 SDK](https://dotnet.microsoft.com/download). WebView2, whi
 - **It refreshes by itself once a day**, the first time you open it each day. **Refresh** in the header does one any time, for instance after adding films to your watchlist. The results you have stay on screen while it refreshes.
 - **The status bar** at the bottom says how fresh the results are ("Updated today at 07:12 · 579 films · 20 leaving soon"), or how a refresh is getting on, or why the last one failed.
 - **Settings**: change your services or the "leaving soon" window and the results regroup at once, with no refresh. A new username or country needs a refresh, which it offers.
-- **History**: every refresh is kept; open any of them, download it as CSV, or delete it. Reports from the old command-line version are listed there too.
+- **History**: every refresh from this week is kept, and the last one of each earlier week (weeks start on Monday); open any of them, download it as CSV, or delete it. Reports from the old command-line version are listed there too.
 - Clicking a film's title opens it on Letterboxd in your usual browser.
 - **Closing the window stops the app.** A refresh under way stops and keeps what it had done; the next one carries on from there.
 - If you change the code, the next click rebuilds the app first. If the new code doesn't build, it says so and opens the last build that worked.
@@ -55,10 +55,10 @@ Everything is in `%LOCALAPPDATA%\FilmExpiryChecker`, away from the code, so rebu
 | | |
 |---|---|
 | `settings.json` | Your settings |
-| `cache\` | What JustWatch said about each film (kept for 7 days, so a refresh only looks up what's new) |
+| `cache\` | What JustWatch said about each film, so a refresh only looks up what's new: kept for 7 days, 2 for films on your services, and never past a leaving date |
 | `runs\` | Each finished refresh, in full |
 | `reports\` | CSV and HTML reports from the command line |
-| `logs\` | The app's log, the launcher's log, and the app's output |
+| `logs\` | The app's log (`app-<date>.log`), the launcher's (`launcher-<date>.log`), and the app's console output as the launcher saw it (`app-output-<date-time>.log`). Kept for 30 days |
 | `WebView2\`, `window.json` | The window's browser profile, and its size and place |
 
 The first time it runs, it copies in the settings, cache and reports from where the old command-line version kept them (it never moves or deletes those).
