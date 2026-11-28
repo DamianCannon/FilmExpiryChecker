@@ -84,24 +84,29 @@ public class JustWatchClient
 
     // ── Film enrichment ───────────────────────────────────────────────────────
 
-    public async Task<List<Offer>?> GetOffersAsync(WatchlistFilm film, CancellationToken ct = default)
+    public async Task<List<Offer>?> GetOffersAsync(WatchlistFilm film, CancellationToken ct = default) =>
+        (await LookUpAsync(film, ct)).Offers;
+
+    /// <summary>The film's offers, and which JustWatch title they're from.</summary>
+    public async Task<FilmLookup> LookUpAsync(WatchlistFilm film, CancellationToken ct = default)
     {
         // Check cache first
         if (_cache.TryGet(film.FilmId, out var cached))
-            return cached!.Offers;
+            return new FilmLookup(cached!.Offers, cached.Match);
 
         // Rate limiting
         await Task.Delay(TimeSpan.FromMilliseconds(RequestDelayMs), _time, ct);
 
-        var offers = await FetchOffersFromApiAsync(film, ct);
+        var (offers, node) = await FetchOffersFromApiAsync(film, ct);
         Fetched++;
         if (offers is null) FetchedNotFound++;
+        var match = node is null ? null : new TitleMatch(node.Id, node.Content?.Title ?? "", node.Content?.OriginalReleaseYear);
 
         // Only cache definite results — not nulls, so improved matching logic is retried next run
         if (offers is not null)
-            _cache.Set(film.FilmId, offers);
+            _cache.Set(film.FilmId, offers, match);
 
-        return offers;
+        return new FilmLookup(offers, match);
     }
 
     private static readonly string TitleOffersQuery = """
@@ -141,25 +146,67 @@ public class JustWatchClient
         }
         """;
 
-    private async Task<List<Offer>?> FetchOffersFromApiAsync(WatchlistFilm film, CancellationToken ct)
+    private async Task<(List<Offer>? Offers, TitleDetail? Match)> FetchOffersFromApiAsync(WatchlistFilm film, CancellationToken ct)
     {
         var edges = await SendSearchRequestAsync(film.Title, new { searchQuery = film.Title }, 10, ct);
-        if (edges is null) return null;
+        if (edges is null) return (null, null);
 
-        var match = FindBestMatch(film, edges);
-
-        // Fallback: IMDb ID match within the same results (handles foreign/alternate titles)
-        if (match is null && !string.IsNullOrEmpty(film.Slug) && _imdbIdResolver is not null)
-        {
-            var imdbId = await _imdbIdResolver(film.Slug, ct);
-            if (!string.IsNullOrEmpty(imdbId))
-                match = edges.Select(e => e.Node)
-                             .FirstOrDefault(n => n?.Content?.ExternalIds?.ImdbId == imdbId);
-        }
-
-        if (match is null) return null;
-        return match.Offers.Count > 0 ? match.Offers : new List<Offer>();
+        var match = ExactMatch(film, edges) ?? await ConfirmedMatchAsync(film, edges, ct);
+        if (match is null) return (null, null);
+        if (match.Offers.Count == 0) match = TwinWithOffers(match, edges) ?? match;
+        return (match.Offers.Count > 0 ? match.Offers : new List<Offer>(), match);
     }
+
+    /// <summary>
+    /// Not sure by title and year, the IMDb ID from Letterboxd decides (#48):
+    /// <list type="bullet">
+    /// <item>a result with the film's own IMDb ID is the film, whatever its title or year, and even if JustWatch
+    /// calls it a series (Letterboxd lists miniseries such as "O.J.: Made in America" as films);</item>
+    /// <item>a near match (a year out, or a longer title) is refused if its IMDb ID is another film's:
+    /// "The Beast (2023)" isn't "Beast (2022)".</item>
+    /// </list>
+    /// Without an IMDb ID, the first near match is taken.
+    /// </summary>
+    private async Task<TitleDetail?> ConfirmedMatchAsync(WatchlistFilm film, List<TitleNode> edges, CancellationToken ct)
+    {
+        var near = NearMatches(film, edges).ToList();
+        var imdbId = !string.IsNullOrEmpty(film.Slug) && _imdbIdResolver is not null
+            ? await _imdbIdResolver(film.Slug, ct)
+            : null;
+        if (string.IsNullOrEmpty(imdbId)) return near.FirstOrDefault();
+
+        var own = edges.Select(e => e.Node).OfType<TitleDetail>()
+                       .FirstOrDefault(n => n.Content?.ExternalIds?.ImdbId == imdbId);
+        return own ?? near.FirstOrDefault(n => n.Content?.ExternalIds?.ImdbId is not { Length: > 0 } theirs || theirs == imdbId);
+    }
+
+    /// <summary>
+    /// JustWatch sometimes lists one title twice and puts the offers on the other entry: "O.J.: Made in America"
+    /// is a film with no offers and a series (same title, same year) on Disney+; "Time Travel Is Dangerous" has
+    /// the IMDb ID, its twin "…Dangerous!" the offers. A twin has the same title (punctuation aside) and is a film
+    /// within a year, or a series of the same year.
+    /// </summary>
+    private static TitleDetail? TwinWithOffers(TitleDetail match, List<TitleNode> edges)
+    {
+        var title = NormaliseTitle(match.Content!.Title);
+        var year = match.Content.OriginalReleaseYear;
+        return edges.Select(e => e.Node).OfType<TitleDetail>().FirstOrDefault(n =>
+            n != match && n.Offers.Count > 0 && n.Content is not null
+            && NormaliseTitle(n.Content.Title) == title
+            && (string.Equals(n.ObjectType, "MOVIE", StringComparison.OrdinalIgnoreCase)
+                ? YearsAgree(year, n.Content.OriginalReleaseYear)
+                : year is not null && n.Content.OriginalReleaseYear == year));
+    }
+
+    /// <summary>Only films: a TV series with the same title isn't the watchlist film.</summary>
+    private static IEnumerable<TitleDetail> Movies(List<TitleNode> edges) =>
+        edges.Select(e => e.Node)
+             .OfType<TitleDetail>()
+             .Where(n => n.Content is not null && string.Equals(n.ObjectType, "MOVIE", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Years agree if either is unknown, or they're at most a year apart (release years vary by country).</summary>
+    private static bool YearsAgree(int? ours, int? theirs) =>
+        ours is null || theirs is null || Math.Abs(ours.Value - theirs.Value) <= 1;
 
     private async Task<List<TitleNode>?> SendSearchRequestAsync(
         string filmTitle, object filter, int first, CancellationToken ct)
@@ -227,45 +274,30 @@ public class JustWatchClient
 
     public int FetchedNotFound { get; private set; }
 
-    private static TitleDetail? FindBestMatch(WatchlistFilm film, List<TitleNode> edges)
+    /// <summary>A film with the same title and the same year: sure enough without asking for the IMDb ID.</summary>
+    private static TitleDetail? ExactMatch(WatchlistFilm film, List<TitleNode> edges)
     {
-        if (edges.Count == 0) return null;
-
+        if (film.Year is null) return null;
         var normalised = NormaliseTitle(film.Title);
+        return Movies(edges).FirstOrDefault(n =>
+            NormaliseTitle(n.Content!.Title) == normalised && n.Content.OriginalReleaseYear == film.Year);
+    }
 
-        // Prefer exact title + year match
-        foreach (var edge in edges)
-        {
-            var node = edge.Node;
-            if (node?.Content is null) continue;
-
-            if (NormaliseTitle(node.Content.Title) == normalised &&
-                node.Content.OriginalReleaseYear == film.Year)
-                return node;
-        }
-
-        // Fall back to title-only match
-        foreach (var edge in edges)
-        {
-            var node = edge.Node;
-            if (node?.Content is null) continue;
-
-            if (NormaliseTitle(node.Content.Title) == normalised)
-                return node;
-        }
-
-        // Final fallback: JustWatch title starts with ours (e.g. "…Part One" suffix)
-        foreach (var edge in edges)
-        {
-            var node = edge.Node;
-            if (node?.Content is null) continue;
-
-            var jwNorm = NormaliseTitle(node.Content.Title);
-            if (jwNorm.StartsWith(normalised + " ") || jwNorm.StartsWith(normalised + ":"))
-                return node;
-        }
-
-        return null;
+    /// <summary>
+    /// Films that might be it, best first: the same title within a year (or with a year unknown), then a longer
+    /// title that starts with ours ("Dune" → "Dune: Part One") when the years agree. Further apart, "Nosferatu
+    /// (1922)" isn't "Nosferatu (2024)" and "Alien (1979)" isn't "Alien: Romulus (2024)": only the IMDb ID can say.
+    /// </summary>
+    private static IEnumerable<TitleDetail> NearMatches(WatchlistFilm film, List<TitleNode> edges)
+    {
+        var normalised = NormaliseTitle(film.Title);
+        var movies = Movies(edges).Where(n => YearsAgree(film.Year, n.Content!.OriginalReleaseYear)).ToList();
+        return movies.Where(n => NormaliseTitle(n.Content!.Title) == normalised)
+            .Concat(movies.Where(n =>
+            {
+                var theirs = NormaliseTitle(n.Content!.Title);
+                return theirs.StartsWith(normalised + " ") || theirs.StartsWith(normalised + ":");
+            }));
     }
 
     private static string NormaliseTitle(string title)
@@ -276,6 +308,9 @@ public class JustWatchClient
                      .Replace(":", "")
                      .Replace("'", "")
                      .Replace(",", "")
+                     .Replace("!", "")
+                     .Replace("?", "")
+                     .Replace(".", "")
                      .Replace("  ", " ")
                      .Trim();
         if (s.StartsWith("the ")) s = s[4..];

@@ -121,6 +121,7 @@ public sealed class CheckRunner(
         progress?.Report(new RunProgress(RunStep.CheckingFilms, 0, watchlist.Count));
 
         var offers = new Dictionary<string, List<Offer>?>();
+        var matches = new Dictionary<string, TitleMatch?>();
         var lookedUp = new List<string>();   // the films asked of JustWatch this time, not answered from the cache
         try
         {
@@ -128,7 +129,9 @@ public sealed class CheckRunner(
             {
                 var film = watchlist[i];
                 var fetchedBefore = client.Fetched;
-                offers[film.FilmId] = await client.GetOffersAsync(film, ct);
+                var lookup = await client.LookUpAsync(film, ct);
+                offers[film.FilmId] = lookup.Offers;
+                matches[film.FilmId] = lookup.Match;
                 if (client.Fetched > fetchedBefore) lookedUp.Add(film.FilmId);
 
                 // Failed searches look like "not found": a run of them, or too many overall, means JustWatch is
@@ -175,7 +178,7 @@ public sealed class CheckRunner(
             MyServices = settings.JustWatch.MyServices.ToList(),
             ExpiringSoonDays = settings.JustWatch.ExpiringSoonDays,
             Services = services,
-            Films = watchlist.Select(f => new SavedFilm { Film = f, Offers = offers.GetValueOrDefault(f.FilmId) }).ToList(),
+            Films = watchlist.Select(f => new SavedFilm { Film = f, Offers = offers.GetValueOrDefault(f.FilmId), Match = matches.GetValueOrDefault(f.FilmId) }).ToList(),
         });
         log.LogInformation("Run saved as {Id}.", run.Id);
 
