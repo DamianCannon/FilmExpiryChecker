@@ -34,6 +34,9 @@ public class Package
 public class FilmSearchResponse
 {
     public FilmSearchData? Data { get; set; }
+
+    /// <summary>GraphQL errors: JustWatch answers 200 with these (and no data) when a query no longer fits its API.</summary>
+    public List<System.Text.Json.JsonElement>? Errors { get; set; }
 }
 
 public class FilmSearchData

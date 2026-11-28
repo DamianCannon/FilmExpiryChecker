@@ -10,7 +10,7 @@ public class LetterboxdScraperSpecs
     private static (LetterboxdScraper Scraper, FakeHttp Http) ScraperWith(Func<string, HttpResponseMessage> pages)
     {
         var http = new FakeHttp(request => pages(request.RequestUri!.ToString()));
-        return (new LetterboxdScraper(new HttpClient(http), "example-user"), http);
+        return (new LetterboxdScraper(new HttpClient(http), "example-user", time: InstantWaits.Instance), http);
     }
 
     private static HttpResponseMessage TwoPages(string url) => url switch
@@ -78,14 +78,26 @@ public class LetterboxdScraperSpecs
     }
 
     [Fact]
-    public async Task A_page_that_cannot_be_fetched_ends_the_list_with_the_films_so_far()
+    public async Task A_later_page_that_wont_load_fails_the_whole_watchlist_after_three_tries()
     {
-        var (scraper, _) = ScraperWith(url =>
+        // Page 1 says there's a page 2, which then can't be had: silently stopping would leave films out (#45).
+        var (scraper, http) = ScraperWith(url =>
             url == Watchlist + "1/" ? FakeHttp.Html(Fixture.Read("watchlist-page-1.html")) : FakeHttp.NotFound());
 
-        var films = await scraper.GetWatchlistAsync();
+        var failed = await Assert.ThrowsAsync<RunFailedException>(() => scraper.GetWatchlistAsync());
 
-        Assert.Equal(3, films.Count);
+        Assert.StartsWith("Couldn't read all of your Letterboxd watchlist: page 2 wouldn't load.", failed.Message);
+        Assert.Equal(3, http.RequestedUrls.Count(u => u == Watchlist + "2/"));
+    }
+
+    [Fact]
+    public async Task A_page_that_fails_once_is_tried_again_and_the_watchlist_is_complete()
+    {
+        var tries = 0;
+        var (scraper, _) = ScraperWith(url =>
+            url == Watchlist + "2/" && ++tries == 1 ? throw new HttpRequestException("Connection reset.") : TwoPages(url));
+
+        Assert.Equal(5, (await scraper.GetWatchlistAsync()).Count);
     }
 
     [Fact]
@@ -118,12 +130,28 @@ public class LetterboxdScraperSpecs
     }
 
     [Fact]
-    public async Task Losing_the_connection_after_page_one_keeps_the_films_so_far()
+    public async Task Losing_the_connection_after_page_one_fails_the_watchlist()
     {
         var (scraper, _) = ScraperWith(url =>
             url == Watchlist + "1/" ? FakeHttp.Html(Fixture.Read("watchlist-page-1.html")) : throw new HttpRequestException("Connection reset."));
 
-        Assert.Equal(3, (await scraper.GetWatchlistAsync()).Count);
+        await Assert.ThrowsAsync<RunFailedException>(() => scraper.GetWatchlistAsync());
+    }
+
+    [Fact]
+    public async Task A_film_page_that_loads_without_an_IMDb_link_is_an_answer()
+    {
+        var (scraper, _) = ScraperWith(_ => FakeHttp.Html("<p>No links here</p>"));
+
+        Assert.Equal((true, (string?)null), await scraper.TryFetchImdbIdAsync("some-film"));
+    }
+
+    [Fact]
+    public async Task A_film_page_that_wont_load_is_not_an_answer()
+    {
+        var (scraper, _) = ScraperWith(_ => throw new HttpRequestException("Connection reset."));
+
+        Assert.Equal((false, (string?)null), await scraper.TryFetchImdbIdAsync("some-film"));
     }
 
     [Fact]

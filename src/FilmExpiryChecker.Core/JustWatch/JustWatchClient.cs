@@ -94,6 +94,8 @@ public class JustWatchClient
         await Task.Delay(TimeSpan.FromMilliseconds(RequestDelayMs), _time, ct);
 
         var offers = await FetchOffersFromApiAsync(film, ct);
+        Fetched++;
+        if (offers is null) FetchedNotFound++;
 
         // Only cache definite results — not nulls, so improved matching logic is retried next run
         if (offers is not null)
@@ -168,6 +170,7 @@ public class JustWatchClient
             Variables = new { country = _region, language = "en", first, filter }
         };
 
+        Searches++;
         try
         {
             var httpResponse = await _http.PostAsJsonAsync(ApiUrl, request, JsonOptions, ct);
@@ -176,20 +179,35 @@ public class JustWatchClient
                 var body = await httpResponse.Content.ReadAsStringAsync(ct);
                 _logger.LogWarning("JustWatch API error for '{Title}': {Status} — {Body}",
                     filmTitle, httpResponse.StatusCode, body[..Math.Min(300, body.Length)]);
-                ConsecutiveSearchErrors++;
-                return null;
+                return SearchFailed();
             }
             var response = await httpResponse.Content.ReadFromJsonAsync<FilmSearchResponse>(JsonOptions, ct);
+
+            // A 200 with GraphQL errors, or without the results asked for, means JustWatch no longer understood the
+            // question: a failure, not "no match" (an empty list of results is a real "no match").
+            if (response?.Errors is { Count: > 0 } || response?.Data?.PopularTitles?.Edges is not { } edges)
+            {
+                _logger.LogWarning("JustWatch answered the search for '{Title}' without results{Errors}; it may have changed.",
+                    filmTitle, response?.Errors is { Count: > 0 } errors ? $": {errors[0]}" : "");
+                return SearchFailed();
+            }
+
             ConsecutiveSearchErrors = 0;
-            return response?.Data?.PopularTitles?.Edges;
+            return edges;
         }
         // A cancelled run must stop, not be mistaken for "film not found". A timeout still counts as a failure.
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
             _logger.LogWarning("JustWatch API error for '{Title}': {Message}", filmTitle, ex.Message);
-            ConsecutiveSearchErrors++;
-            return null;
+            return SearchFailed();
         }
+    }
+
+    private List<TitleNode>? SearchFailed()
+    {
+        ConsecutiveSearchErrors++;
+        SearchErrors++;
+        return null;
     }
 
     /// <summary>
@@ -197,6 +215,17 @@ public class JustWatchClient
     /// tell when JustWatch has stopped answering rather than save every film as missing.
     /// </summary>
     public int ConsecutiveSearchErrors { get; private set; }
+
+    /// <summary>Searches sent to JustWatch so far (not counting films answered from the cache).</summary>
+    public int Searches { get; private set; }
+
+    /// <summary>Searches that failed so far, in a row or not: a high rate means JustWatch isn't answering properly.</summary>
+    public int SearchErrors { get; private set; }
+
+    /// <summary>Films looked up on JustWatch this time (not from the cache), and how many of those weren't found.</summary>
+    public int Fetched { get; private set; }
+
+    public int FetchedNotFound { get; private set; }
 
     private static TitleDetail? FindBestMatch(WatchlistFilm film, List<TitleNode> edges)
     {

@@ -46,15 +46,9 @@ public class LetterboxdScraper
 
         while (true)
         {
-            var url = $"https://letterboxd.com/{_username}/watchlist/page/{page}/";
-
-            // Failing to reach Letterboxd at all is not the same as an empty watchlist, so page 1 failing is an error.
-            var html = await FetchPageAsync(url, ct, failLoudly: page == 1);
-            if (html is null)
-            {
-                _logger.LogInformation("Watchlist page {Page} could not be fetched; stopping there.", page);
-                break;
-            }
+            // Null only when page 1 is missing (no such user, or not public); every other failure throws.
+            var html = await FetchWatchlistPageAsync(page, ct);
+            if (html is null) break;
 
             var pageFilms = ParseFilmsFromPage(html);
 
@@ -113,57 +107,83 @@ public class LetterboxdScraper
         return nextLink is not null;
     }
     
-    public async Task<string?> FetchImdbIdAsync(string slug, CancellationToken ct = default)
+    public async Task<string?> FetchImdbIdAsync(string slug, CancellationToken ct = default) =>
+        (await TryFetchImdbIdAsync(slug, ct)).ImdbId;
+
+    /// <summary>
+    /// The film page's IMDb ID, if it has one. <c>Answered</c> is false when the page couldn't be loaded, so a
+    /// passing fault isn't remembered as "this film has no IMDb ID".
+    /// </summary>
+    public async Task<(bool Answered, string? ImdbId)> TryFetchImdbIdAsync(string slug, CancellationToken ct = default)
     {
-        var html = await FetchPageAsync($"https://letterboxd.com/film/{slug}/", ct);
-        if (html is null) return null;
-        var match = System.Text.RegularExpressions.Regex.Match(html, @"imdb\.com/title/(tt\d+)");
-        return match.Success ? match.Groups[1].Value : null;
+        var page = await FetchAsync($"https://letterboxd.com/film/{slug}/", ct);
+        if (page.Outcome == Fetched.Failed) return (false, null);
+        if (page.Html is null) return (true, null);
+        var match = System.Text.RegularExpressions.Regex.Match(page.Html, @"imdb\.com/title/(tt\d+)");
+        return (true, match.Success ? match.Groups[1].Value : null);
     }
 
-    /// <summary>The page, or null if it doesn't exist (404) or, unless <paramref name="failLoudly"/>, couldn't be fetched.</summary>
-    private async Task<string?> FetchPageAsync(string url, CancellationToken ct, bool failLoudly = false)
+    private enum Fetched { Page, Missing, Failed }
+
+    private readonly record struct FetchResult(Fetched Outcome, string? Html, int? Status, Exception? Error);
+
+    /// <summary>One request: the page, missing (404, or 403 as Letterboxd answers for an unknown user), or failed.</summary>
+    private async Task<FetchResult> FetchAsync(string url, CancellationToken ct)
     {
-        HttpResponseMessage response;
         try
         {
-            response = await _http.GetAsync(url, ct);
+            var response = await _http.GetAsync(url, ct);
+            if (response.StatusCode is System.Net.HttpStatusCode.NotFound or System.Net.HttpStatusCode.Forbidden)
+            {
+                _logger.LogInformation("{Url} answered {Status}.", url, (int)response.StatusCode);
+                return new(Fetched.Missing, null, (int)response.StatusCode, null);
+            }
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Error fetching {Url}: {Status}", url, (int)response.StatusCode);
+                return new(Fetched.Failed, null, (int)response.StatusCode, null);
+            }
+            return new(Fetched.Page, await response.Content.ReadAsStringAsync(ct), (int)response.StatusCode, null);
         }
-        // A cancelled run must stop, not look like the end of the watchlist. A timeout still counts as a failure.
+        // A cancelled run must stop, not look like a missing page. A timeout still counts as a failure.
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
             _logger.LogWarning("Error fetching {Url}: {Message}", url, ex.Message);
-            if (failLoudly)
-                throw new RunFailedException("Couldn't reach Letterboxd. Check your internet connection and try again.", ex);
-            return null;
+            return new(Fetched.Failed, null, null, ex);
         }
+    }
 
-        // Letterboxd answers 403 (not 404) for a username that doesn't exist; both mean "no such page".
-        if (response.StatusCode is System.Net.HttpStatusCode.NotFound or System.Net.HttpStatusCode.Forbidden)
-        {
-            _logger.LogInformation("{Url} answered {Status}.", url, (int)response.StatusCode);
-            return null;
-        }
+    /// <summary>The pauses before trying a watchlist page again.</summary>
+    private static readonly TimeSpan[] RetryAfter = [TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(3)];
 
-        if (!response.IsSuccessStatusCode)
+    /// <summary>
+    /// A watchlist page, tried up to three times. Page 1 missing means no such user, or not public: null, an empty
+    /// watchlist. Any other page that won't load fails the run, rather than silently leaving out the rest of the
+    /// watchlist (#45).
+    /// </summary>
+    private async Task<string?> FetchWatchlistPageAsync(int page, CancellationToken ct)
+    {
+        var url = $"https://letterboxd.com/{_username}/watchlist/page/{page}/";
+        for (var attempt = 0; ; attempt++)
         {
-            _logger.LogWarning("Error fetching {Url}: {Status}", url, (int)response.StatusCode);
-            if (failLoudly)
-                throw new RunFailedException(
-                    $"Letterboxd isn't working properly right now (it answered {(int)response.StatusCode}). Try again later.");
-            return null;
-        }
+            var result = await FetchAsync(url, ct);
+            if (result.Outcome == Fetched.Page) return result.Html;
+            if (result.Outcome == Fetched.Missing && page == 1) return null;
 
-        try
-        {
-            return await response.Content.ReadAsStringAsync(ct);
-        }
-        catch (Exception ex) when (!ct.IsCancellationRequested)
-        {
-            _logger.LogWarning("Error fetching {Url}: {Message}", url, ex.Message);
-            if (failLoudly)
-                throw new RunFailedException("Couldn't reach Letterboxd. Check your internet connection and try again.", ex);
-            return null;
+            if (attempt < RetryAfter.Length)
+            {
+                _logger.LogInformation("Watchlist page {Page} didn't load; trying again.", page);
+                await Task.Delay(RetryAfter[attempt], _time, ct);
+                continue;
+            }
+
+            throw page == 1
+                ? result.Error is not null
+                    ? new RunFailedException("Couldn't reach Letterboxd. Check your internet connection and try again.", result.Error)
+                    : new RunFailedException($"Letterboxd isn't working properly right now (it answered {result.Status}). Try again later.")
+                : new RunFailedException(
+                    $"Couldn't read all of your Letterboxd watchlist: page {page} wouldn't load. Your earlier results are kept; try again later.",
+                    result.Error);
         }
     }
 

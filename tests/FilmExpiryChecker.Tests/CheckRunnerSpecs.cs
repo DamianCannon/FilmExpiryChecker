@@ -335,6 +335,142 @@ public sealed class CheckRunnerSpecs : IDisposable
         Assert.Equal(10, searches);
     }
 
+    // ── Never a silently broken run (#45) ───────────────────────────────────────
+
+    private const string GraphQlError = """{"errors":[{"message":"Cannot query field \"popularTitles\" on type \"Query\"."}],"data":null}""";
+
+    private FakeHttp SitesWithLongWatchlistAnd(int count, Func<string, HttpResponseMessage?> search) => Sites((request, body) =>
+        request.RequestUri!.ToString() == Watchlist + "1/" ? FakeHttp.Html(LongWatchlist(count))
+        : body.Contains("GetTitleOffers") ? search(body)
+        : null);
+
+    [Fact]
+    public async Task JustWatch_answering_with_GraphQL_errors_fails_the_run_instead_of_saving_everything_as_not_found()
+    {
+        var http = SitesWithLongWatchlistAnd(30, _ => FakeHttp.Json(GraphQlError));
+
+        var failed = await Assert.ThrowsAsync<RunFailedException>(() =>
+            new CheckRunner(new HttpClient(http), Data, time: InstantWaits.Instance).RunAsync(Settings()));
+
+        Assert.Contains("JustWatch stopped answering properly", failed.Message);
+        Assert.Empty(new RunStore(Data).List());
+    }
+
+    [Fact]
+    public async Task Failures_scattered_through_a_run_fail_it_too_not_only_failures_in_a_row()
+    {
+        // Every other search fails, so there are never five in a row, but half of them fail.
+        var n = 0;
+        var http = SitesWithLongWatchlistAnd(40, body => Interlocked.Increment(ref n) % 2 == 0
+            ? new HttpResponseMessage(System.Net.HttpStatusCode.TooManyRequests) : null);
+
+        var failed = await Assert.ThrowsAsync<RunFailedException>(() =>
+            new CheckRunner(new HttpClient(http), Data, time: InstantWaits.Instance).RunAsync(Settings()));
+
+        Assert.Contains("JustWatch stopped answering properly", failed.Message);
+    }
+
+    [Fact]
+    public async Task Too_many_films_not_found_this_time_keeps_the_previous_results()
+    {
+        var previous = new RunStore(Data).Save(new SavedRun { RanAt = DateTimeOffset.UtcNow.AddDays(-1), Username = "example-user" });
+        // Answers properly, but with no match for any film: as when JustWatch changes what its titles look like.
+        var http = SitesWithLongWatchlistAnd(30, _ => FakeHttp.Json("""{"data":{"popularTitles":{"edges":[]}}}"""));
+
+        var failed = await Assert.ThrowsAsync<RunFailedException>(() =>
+            new CheckRunner(new HttpClient(http), Data, time: InstantWaits.Instance).RunAsync(Settings()));
+
+        Assert.StartsWith("JustWatch found only 0 of the 30 films it was asked about", failed.Message);
+        Assert.Equal(previous.Id, new RunStore(Data).Latest()!.Id);
+    }
+
+    /// <summary>A previous run of 40 made-up films: the first 25 found (and cached), the last 15 not found.</summary>
+    private void PreviousRunWith25FoundAnd15NotFound(bool cacheTheFound)
+    {
+        var cache = new JustWatchCache(Data.JustWatchCacheFile, 7);
+        new RunStore(Data).Save(new SavedRun
+        {
+            RanAt = DateTimeOffset.UtcNow.AddDays(-1),
+            Username = "example-user",
+            Films = Enumerable.Range(1, 40).Select(i => new SavedFilm
+            {
+                Film = new WatchlistFilm { Title = $"Made Up Film {i}", FilmId = $"{1000 + i}" },
+                Offers = i <= 25 ? [] : null,
+            }).ToList(),
+        });
+        if (cacheTheFound)
+            foreach (var i in Enumerable.Range(1, 25)) cache.Set($"{1000 + i}", []);
+        cache.Save();
+    }
+
+    [Fact]
+    public async Task An_ordinary_refresh_that_only_asks_again_about_films_not_found_before_is_kept()
+    {
+        // As on the owner's real data: the found films come from the cache, so the only films asked are the ones
+        // not found last time (15 here, 22 on the owner's), and they're still not found. That's no sign of trouble
+        // (found by hand, #45).
+        PreviousRunWith25FoundAnd15NotFound(cacheTheFound: true);
+        var http = SitesWithLongWatchlistAnd(40, _ => FakeHttp.Json("""{"data":{"popularTitles":{"edges":[]}}}"""));
+
+        var result = await new CheckRunner(new HttpClient(http), Data, time: InstantWaits.Instance).RunAsync(Settings());
+
+        Assert.Equal(result.Run!.Id, new RunStore(Data).Latest()!.Id);
+    }
+
+    [Fact]
+    public async Task Films_found_last_time_now_mostly_not_found_keeps_the_previous_results()
+    {
+        PreviousRunWith25FoundAnd15NotFound(cacheTheFound: false);
+        var previous = new RunStore(Data).Latest()!;
+        var http = SitesWithLongWatchlistAnd(40, _ => FakeHttp.Json("""{"data":{"popularTitles":{"edges":[]}}}"""));
+
+        var failed = await Assert.ThrowsAsync<RunFailedException>(() =>
+            new CheckRunner(new HttpClient(http), Data, time: InstantWaits.Instance).RunAsync(Settings()));
+
+        Assert.StartsWith("JustWatch found only 0 of the 25 films it was asked about that it found last time", failed.Message);
+        Assert.Equal(previous.Id, new RunStore(Data).Latest()!.Id);
+    }
+
+    [Fact]
+    public async Task A_watchlist_much_smaller_than_last_time_is_held_back_once_then_accepted()
+    {
+        var store = new RunStore(Data);
+        var previous = store.Save(new SavedRun
+        {
+            RanAt = DateTimeOffset.UtcNow.AddDays(-1),
+            Username = "example-user",
+            Films = Enumerable.Range(1, 40).Select(i => new SavedFilm { Film = new WatchlistFilm { Title = $"Film {i}", FilmId = $"{2000 + i}" }, Offers = [] }).ToList(),
+        });
+        var runner = new CheckRunner(new HttpClient(Sites()), Data, time: InstantWaits.Instance);
+
+        var failed = await Assert.ThrowsAsync<RunFailedException>(() => runner.RunAsync(Settings()));
+        Assert.StartsWith("Your Letterboxd watchlist came back with 5 films, down from 40 last time", failed.Message);
+        Assert.Equal(previous.Id, store.Latest()!.Id);
+
+        var second = await runner.RunAsync(Settings());
+
+        Assert.Equal(second.Run!.Id, store.Latest()!.Id);
+        Assert.Equal(5, store.Latest()!.Films.Count);
+    }
+
+    [Fact]
+    public async Task A_film_page_that_wont_load_isnt_remembered_as_having_no_IMDb_ID()
+    {
+        // No title matches, so the IMDb ID is looked up; the first time the film page fails, the second it loads.
+        var filmPageTries = 0;
+        FakeHttp Http() => Sites((request, body) =>
+            request.RequestUri!.AbsolutePath.StartsWith("/film/")
+                ? (++filmPageTries == 1 ? throw new HttpRequestException("Connection reset.") : FakeHttp.Html("<p>no imdb link</p>"))
+            : body.Contains("GetTitleOffers") ? FakeHttp.Json("""{"data":{"popularTitles":{"edges":[]}}}""")
+            : null);
+
+        await new CheckRunner(new HttpClient(Http()), Data, time: InstantWaits.Instance).RunAsync(Settings());
+        var afterFailure = new ImdbIdCache(Data.ImdbCacheFile);
+
+        Assert.False(afterFailure.TryGet("kisapmata", out _), "a failed fetch was cached as 'no IMDb ID'");
+        Assert.True(afterFailure.TryGet("its-never-over-jeff-buckley", out var none) && none is null, "a page that loaded wasn't cached");
+    }
+
     // ── No console in Core ──────────────────────────────────────────────────────
 
     [Fact]

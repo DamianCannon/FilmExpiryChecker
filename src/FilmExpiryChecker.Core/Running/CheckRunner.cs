@@ -78,9 +78,13 @@ public sealed class CheckRunner(
         {
             if (imdbCache.TryGet(slug, out var cached)) return cached;
             await Task.Delay(TimeSpan.FromMilliseconds(300), _time, token);
-            var id = await scraper.FetchImdbIdAsync(slug, token);
-            imdbCache.Set(slug, id);
-            imdbCache.Save();
+            var (answered, id) = await scraper.TryFetchImdbIdAsync(slug, token);
+            // Only a page that loaded is an answer: a passing fault mustn't be remembered as "no IMDb ID" (#45).
+            if (answered)
+            {
+                imdbCache.Set(slug, id);
+                imdbCache.Save();
+            }
             return id;
         }
 
@@ -116,17 +120,22 @@ public sealed class CheckRunner(
         progress?.Report(new RunProgress(RunStep.CheckingFilms, 0, watchlist.Count));
 
         var offers = new Dictionary<string, List<Offer>?>();
+        var lookedUp = new List<string>();   // the films asked of JustWatch this time, not answered from the cache
         try
         {
             for (var i = 0; i < watchlist.Count; i++)
             {
                 var film = watchlist[i];
+                var fetchedBefore = client.Fetched;
                 offers[film.FilmId] = await client.GetOffersAsync(film, ct);
+                if (client.Fetched > fetchedBefore) lookedUp.Add(film.FilmId);
 
-                // Failed searches look like "not found"; a run of them means JustWatch is down, not the films.
-                if (client.ConsecutiveSearchErrors >= GiveUpAfterSearchErrors)
+                // Failed searches look like "not found": a run of them, or too many overall, means JustWatch is
+                // down or has changed, not the films.
+                if (client.ConsecutiveSearchErrors >= GiveUpAfterSearchErrors
+                    || (client.SearchErrors >= 10 && client.SearchErrors * 10 > client.Searches * 3))
                     throw new RunFailedException(
-                        "JustWatch stopped answering part-way through. Your earlier results are kept; try again later.");
+                        "JustWatch stopped answering properly part-way through. Your earlier results are kept; try again later.");
 
                 // Saved as it goes, so a run that is killed outright still keeps most of its work.
                 if ((i + 1) % SaveEvery == 0)
@@ -153,6 +162,9 @@ public sealed class CheckRunner(
         cache.Save();
         log.LogInformation("Cache saved.");
 
+        // Before this run can replace the latest: does it look right? (#45)
+        CheckPlausible(settings, watchlist.Count, lookedUp, offers, log);
+
         // 5. Keep the run itself, raw offers and all, so it can be shown and regrouped later
         var run = new RunStore(data).Save(new SavedRun
         {
@@ -172,6 +184,55 @@ public sealed class CheckRunner(
             log.LogInformation("Tidied {Count} older runs, keeping the latest of each earlier week.", pruned.Count);
 
         return new RunResult { Outcome = RunOutcome.Completed, Films = run.Group(_time), ServiceCount = services.Count, Run = run };
+    }
+
+    /// <summary>
+    /// Refuses a run that would quietly replace good results with wrong ones: one where JustWatch no longer finds
+    /// films it found before (it has probably changed), or where the watchlist came back much smaller than last
+    /// time. A genuine clear-out of the watchlist is accepted when the next refresh sees the same count.
+    /// </summary>
+    private void CheckPlausible(AppSettings settings, int watchlistCount, List<string> lookedUp,
+        Dictionary<string, List<Offer>?> offers, ILogger log)
+    {
+        var store = new RunStore(data);
+        var previous = store.Latest();
+        var sameUser = previous is not null
+            && string.Equals(previous.Username, settings.Letterboxd.Username, StringComparison.OrdinalIgnoreCase);
+
+        // Films not found are never cached, so they're asked again every time while found ones mostly come from the
+        // cache: judging by everything asked would fail every ordinary refresh. With a previous run, judge by the
+        // films it found that were asked again; without one, everything was asked fresh, so judge by all of them.
+        var foundBefore = sameUser
+            ? previous!.Films.Where(f => f.Offers is not null).Select(f => f.Film.FilmId).ToHashSet()
+            : null;
+        var judged = foundBefore is { Count: > 0 } ? lookedUp.Where(foundBefore.Contains).ToList() : lookedUp;
+        var missing = judged.Count(id => offers.GetValueOrDefault(id) is null);
+        if (judged.Count >= (foundBefore is { Count: > 0 } ? 10 : 20) && missing * 10 > judged.Count * 3)
+            throw new RunFailedException(
+                $"JustWatch found only {judged.Count - missing} of the {judged.Count} films it was asked about" +
+                (foundBefore is { Count: > 0 } ? " that it found last time" : "") +
+                ", so it may have changed. Your earlier results are kept; try again later.");
+        var mark = Path.Combine(data.Root, "watchlist-shrank.txt");
+        var shrankSharply = sameUser && previous!.Films.Count >= 20 && watchlistCount * 10 < previous.Films.Count * 7;
+
+        if (!shrankSharply)
+        {
+            if (File.Exists(mark)) File.Delete(mark);
+            return;
+        }
+
+        // Seen once already with the same count: it really is that size now.
+        if (File.Exists(mark) && int.TryParse(File.ReadAllText(mark), out var seenBefore) && Math.Abs(seenBefore - watchlistCount) <= 2)
+        {
+            File.Delete(mark);
+            log.LogInformation("The watchlist is still {Count} films, down from {Previous}: accepted.", watchlistCount, previous!.Films.Count);
+            return;
+        }
+
+        SafeFile.WriteAllText(mark, watchlistCount.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        throw new RunFailedException(
+            $"Your Letterboxd watchlist came back with {watchlistCount} films, down from {previous!.Films.Count} last time, " +
+            "so in case something went wrong these results weren't kept. If you did remove them, refresh again and they will be.");
     }
 
     /// <summary>Passes each report straight on, on the same thread, so progress arrives in order.</summary>
