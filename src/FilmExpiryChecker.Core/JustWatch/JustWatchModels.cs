@@ -82,7 +82,16 @@ public class Offer
     public string? AvailableTo { get; set; }
 
     public int PackageId => Package?.PackageId ?? 0;
-    public DateTime? ExpiryDate => DateTime.TryParse(AvailableTo, out var d) ? d.ToUniversalTime() : null;
+    /// <summary>
+    /// The day it leaves, as a calendar date (midnight, <see cref="DateTimeKind.Utc"/> so nothing shifts it).
+    /// JustWatch gives a date only ("2027-08-30"): read as the machine's local time, it showed a day early in
+    /// summer (#46).
+    /// </summary>
+    public DateTime? ExpiryDate =>
+        DateTime.TryParse(AvailableTo, System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out var d)
+            ? DateTime.SpecifyKind(d.Date, DateTimeKind.Utc)
+            : null;
 }
 
 public class OfferPackage

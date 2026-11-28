@@ -13,19 +13,19 @@ public class CsvReporter
         var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HHmm");
         var path = Path.Combine(outputDir, $"film-expiry-{timestamp}.csv");
 
-        Storage.SafeFile.Write(path, stream => WriteTo(stream, results, DateTimeOffset.UtcNow));
+        Storage.SafeFile.Write(path, stream => WriteTo(stream, results, DateTimeOffset.UtcNow, TimeZoneInfo.Local));
         return path;
     }
 
     /// <summary>The same report, as text, with days remaining counted from <paramref name="now"/>.</summary>
-    public string ToCsv(List<FilmResult> results, DateTimeOffset now)
+    public string ToCsv(List<FilmResult> results, DateTimeOffset now, TimeZoneInfo? zone = null)
     {
         using var stream = new MemoryStream();
-        WriteTo(stream, results, now);
+        WriteTo(stream, results, now, zone ?? TimeZoneInfo.Local);
         return new System.Text.UTF8Encoding(false).GetString(stream.ToArray());
     }
 
-    private static void WriteTo(Stream stream, List<FilmResult> results, DateTimeOffset now)
+    private static void WriteTo(Stream stream, List<FilmResult> results, DateTimeOffset now, TimeZoneInfo zone)
     {
         var config = new CsvConfiguration(CultureInfo.InvariantCulture)
         {
@@ -48,7 +48,7 @@ public class CsvReporter
                 MyServices = r.MyServicesDisplay,
                 OtherServices = r.OtherServicesDisplay,
                 ExpiryDate = r.ExpiryDisplay,
-                DaysRemaining = r.DaysLeftAt(now)?.ToString() ?? "",
+                DaysRemaining = r.DaysLeftAt(now, zone)?.ToString() ?? "",
                 HowToWatch = r.HowToWatchDisplay,
                 RentOrBuy = r.RentOrBuyDisplay
             });

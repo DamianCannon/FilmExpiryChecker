@@ -126,7 +126,7 @@ public class HtmlReporter
                                  : days.HasValue && days <= 30 ? "expiry-soon nowrap"
                                  : "nowrap";
                 sb.Append($"<td class=\"{urgencyClass}\" style=\"white-space:nowrap\">{film.ExpiryDisplay}</td>");
-                sb.Append($"<td class=\"{urgencyClass}\" style=\"white-space:nowrap\">{(days.HasValue ? $"{days}d" : "")}</td>");
+                sb.Append($"<td class=\"{urgencyClass}\" style=\"white-space:nowrap\">{(days switch { null => "", 0 => "last day", _ => $"{days}d" })}</td>");
             }
 
             if (category is FilmCategory.LeavingSoonMyServices or FilmCategory.AvailableMyServices)

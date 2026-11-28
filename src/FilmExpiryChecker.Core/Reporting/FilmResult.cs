@@ -31,13 +31,12 @@ public class FilmResult
     /// <summary>Earliest expiry across all relevant offers, if known.</summary>
     public DateTime? EarliestExpiry { get; set; }
 
-    public int? DaysUntilExpiry => DaysLeftAt(DateTimeOffset.UtcNow);
+    public int? DaysUntilExpiry => DaysLeftAt(DateTimeOffset.UtcNow, TimeZoneInfo.Local);
 
-    /// <summary>Whole days left from <paramref name="now"/> (rounded up), so "days left" is counted from the day
-    /// the results are looked at, not the day they were fetched.</summary>
-    public int? DaysLeftAt(DateTimeOffset now) => EarliestExpiry.HasValue
-        ? (int)Math.Ceiling((EarliestExpiry.Value - now.UtcDateTime).TotalDays)
-        : null;
+    /// <summary>Calendar days left from today where the user is (0 is the last day), counted from the day the
+    /// results are looked at, not the day they were fetched.</summary>
+    public int? DaysLeftAt(DateTimeOffset now, TimeZoneInfo zone) =>
+        EarliestExpiry is { } leaving ? Dates.DaysUntil(leaving, now, zone) : null;
 
     public string MyServicesDisplay =>
         MyServiceOffers.Count > 0
@@ -58,7 +57,7 @@ public class FilmResult
             .Distinct().Order().Select(k => k.Words()));
 
     public string ExpiryDisplay => EarliestExpiry.HasValue
-        ? EarliestExpiry.Value.ToString("dd MMM yyyy")
+        ? Dates.Day(EarliestExpiry.Value)
         : string.Empty;
 
     public string CategoryDisplay => Category switch
@@ -76,7 +75,7 @@ public class FilmResult
     private static string FormatOffer(ServiceOffer o)
     {
         var name = o.Kind == OfferKind.Free ? $"{o.ServiceName} (free)" : o.ServiceName;
-        return o.ExpiryDate.HasValue ? $"{name} (until {o.ExpiryDate.Value:dd MMM yyyy})" : name;
+        return o.ExpiryDate.HasValue ? $"{name} (until {Dates.Day(o.ExpiryDate.Value)})" : name;
     }
 }
 

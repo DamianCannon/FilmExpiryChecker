@@ -62,10 +62,16 @@ public class ReportBuilder
             return result;
         }
 
-        var threshold = _time.GetUtcNow().UtcDateTime.AddDays(_expiringSoonDays);
+        // Leaving dates are calendar days, counted from today where the user is (#46).
+        var today = Dates.Today(_time.GetUtcNow(), _time.LocalTimeZone);
+        var lastSoonDay = today.AddDays(_expiringSoonDays);
 
-        // Only offers on services JustWatch lists, of a kind we know.
-        var known = offers.Where(o => _providerNames.ContainsKey(o.PackageId)).ToList();
+        // Only offers on services JustWatch lists. A listing whose last day has passed is gone (the cache can be
+        // days old), so it isn't counted at all.
+        var known = offers
+            .Where(o => _providerNames.ContainsKey(o.PackageId))
+            .Where(o => o.ExpiryDate is not { } last || last.Date >= today)
+            .ToList();
         foreach (var unknown in known.Select(o => o.MonetizationType).Where(t => OfferKinds.Of(t) == OfferKind.Unknown))
             if (_unknownTypes.Add(unknown)) _onUnknownType?.Invoke(unknown);
 
@@ -104,7 +110,7 @@ public class ReportBuilder
             .OrderBy(o => o.ServiceName, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        bool Leaving(ServiceOffer o) => o.ExpiryDate is { } until && until <= threshold;
+        bool Leaving(ServiceOffer o) => o.ExpiryDate is { } until && until.Date <= lastSoonDay;
         var myLeaving = result.MyServiceOffers.Where(Leaving).ToList();
 
         // 1. Leaving any of my services is flagged, even if it can be watched elsewhere: the soonest date shows.

@@ -65,7 +65,7 @@ public sealed class HistorySpecs : IDisposable
         Films = Enumerable.Range(1, films).Select(i => new SavedFilm
         {
             Film = new WatchlistFilm { Title = $"Film {i}", Year = 2000 + i, Slug = $"film-{i}", FilmId = i.ToString() },
-            Offers = i == 1 ? [On(Netflix, ranAt.AddDays(10))] : [On(Disney)],
+            Offers = i == 1 ? [On(Netflix, Now.AddDays(10))] : [On(Disney)],   // leaving 10 days from "today"
         }).ToList(),
     });
 
