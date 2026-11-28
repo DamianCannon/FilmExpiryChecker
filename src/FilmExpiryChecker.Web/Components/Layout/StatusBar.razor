@@ -83,6 +83,9 @@
         var usernameSet = Current.UsernameSet;
         var state = Refresh.State;
         _line = StatusText.For(state, _summary, usernameSet, Time.GetUtcNow(), Time.LocalTimeZone);
+        // A settings file that can't be read is said plainly while nothing's running (#47).
+        if (state is not RefreshState.Running && Current.Problem is { } problem)
+            _line = new StatusLine($"Your settings file couldn't be read ({problem}), so the defaults are in use. Save Settings to fix it.", PointToSettings: true);
         // A tinted band while refreshing or after a failure, so it catches the eye.
         _kind = state switch
         {

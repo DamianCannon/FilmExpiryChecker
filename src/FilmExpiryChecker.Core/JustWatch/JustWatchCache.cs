@@ -13,6 +13,7 @@ public class JustWatchCache
     private readonly ILogger _logger;
     private readonly TimeProvider _time;
     private readonly HashSet<int> _myServices;
+    private readonly string _region;
     private Dictionary<string, CachedFilmData> _store = new();
 
     /// <summary>A film on one of my services (or free) is checked again after this long, whatever the cache days,
@@ -26,9 +27,12 @@ public class JustWatchCache
     };
 
     /// <param name="myServices">The services counted as mine, whose films are checked again more often.</param>
+    /// <param name="region">The country whose offers these are: one film's offers differ by country, so entries
+    /// are kept per country and a change of country never reuses the old one's (#47).</param>
     public JustWatchCache(string filePath, int expiryDays, ILogger? logger = null, TimeProvider? time = null,
-        IEnumerable<string>? myServices = null)
+        IEnumerable<string>? myServices = null, string region = "GB")
     {
+        _region = region.ToUpperInvariant();
         _filePath = filePath;
         _expiryDays = expiryDays;
         _logger = logger ?? NullLogger.Instance;
@@ -49,8 +53,12 @@ public class JustWatchCache
         try
         {
             var json = File.ReadAllText(_filePath);
-            _store = JsonSerializer.Deserialize<Dictionary<string, CachedFilmData>>(json, JsonOptions)
-                     ?? new Dictionary<string, CachedFilmData>();
+            var stored = JsonSerializer.Deserialize<Dictionary<string, CachedFilmData>>(json, JsonOptions)
+                         ?? new Dictionary<string, CachedFilmData>();
+            // Entries from before countries were kept apart ("1234", not "GB:1234") are taken as this country's.
+            _store = new Dictionary<string, CachedFilmData>();
+            foreach (var (key, entry) in stored.OrderBy(kv => kv.Key.Contains(':') ? 0 : 1))
+                _store.TryAdd(key.Contains(':') ? key : $"{_region}:{key}", entry);
         }
         catch
         {
@@ -64,7 +72,7 @@ public class JustWatchCache
     /// <summary>Returns true if a valid, non-expired entry exists for this film ID.</summary>
     public bool TryGet(string filmId, out CachedFilmData? data)
     {
-        if (_store.TryGetValue(filmId, out data) && IsFresh(data))
+        if (_store.TryGetValue(Key(filmId), out data) && IsFresh(data))
             return true;
 
         data = null;
@@ -90,12 +98,14 @@ public class JustWatchCache
 
     public void Set(string filmId, List<Offer>? offers)
     {
-        _store[filmId] = new CachedFilmData
+        _store[Key(filmId)] = new CachedFilmData
         {
             CachedAt = _time.GetUtcNow().UtcDateTime,
             Offers = offers
         };
     }
+
+    private string Key(string filmId) => $"{_region}:{filmId}";
 
     public int Count => _store.Count;
     public int ExpiredCount => _store.Count(kv => !IsFresh(kv.Value));

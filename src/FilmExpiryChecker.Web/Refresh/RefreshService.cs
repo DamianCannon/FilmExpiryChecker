@@ -18,6 +18,7 @@ public sealed class RefreshService : BackgroundService, IRefreshStatus
     private readonly ILogger<RefreshService> _log;
     private readonly SemaphoreSlim _requested = new(0);
     private int _busy;
+    private int _again;
     private RefreshState _state;
 
     public RefreshService(
@@ -38,11 +39,17 @@ public sealed class RefreshService : BackgroundService, IRefreshStatus
     /// <summary>Raised (on a background thread) each time the state changes, including every bit of progress.</summary>
     public event Action<RefreshState>? Changed;
 
-    /// <summary>Starts a refresh unless one is already running. Returns whether it started one; never queues.</summary>
-    public bool RequestRefresh()
+    /// <summary>
+    /// Starts a refresh unless one is already running. Returns whether it started one. Asked with
+    /// <paramref name="afterCurrent"/> while one runs, another follows it (only one ever waits).
+    /// </summary>
+    public bool RequestRefresh(bool afterCurrent = false)
     {
         if (Interlocked.CompareExchange(ref _busy, 1, 0) != 0)
+        {
+            if (afterCurrent) Volatile.Write(ref _again, 1);
             return false;
+        }
 
         SetState(new RefreshState.Running(RunStep.ReadingWatchlist, 0, null, _time.GetUtcNow(), State.LastSuccess));
         _requested.Release();
@@ -120,6 +127,11 @@ public sealed class RefreshService : BackgroundService, IRefreshStatus
 
         SetState(outcome);
         Volatile.Write(ref _busy, 0);
+
+        // One asked for while this ran (settings changed under it) starts now. Checked after clearing _busy, so a
+        // request arriving at any moment is either seen here or starts a refresh itself: never lost, never two.
+        if (Interlocked.Exchange(ref _again, 0) == 1 && !stopping.IsCancellationRequested)
+            RequestRefresh();
     }
 
     private RefreshState.Failed Failed(string reason, DateTimeOffset? lastSuccess) =>

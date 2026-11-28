@@ -76,3 +76,12 @@ td a {
 .cat7 h2 { background: #6c757d; color: #fff; }
 
 
+
+.for-others {
+    background: #fff4e0;
+    border-left: 4px solid #f4a261;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+    font-weight: 600;
+}
+

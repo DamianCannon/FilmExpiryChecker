@@ -17,7 +17,8 @@
 @if (_run is not null)
 {
     <p class="downloads"><a href="download/latest.csv" download>Download these results as CSV</a></p>
-    <ResultsView Run="_run" MyServices="_settings.JustWatch.MyServices" ExpiringSoonDays="_settings.JustWatch.ExpiringSoonDays" />
+    <ResultsView Run="_run" MyServices="_settings.JustWatch.MyServices" ExpiringSoonDays="_settings.JustWatch.ExpiringSoonDays"
+                 CurrentUsername="@_settings.Letterboxd.Username" CurrentRegion="@_settings.JustWatch.Region" />
 }
 else
 {

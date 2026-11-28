@@ -22,7 +22,8 @@ else
         <a href="history">Back to History</a>
         <a href="download/@(_run.Id).csv" download>Download CSV</a>
     </div>
-    <ResultsView Run="_run" MyServices="_settings.JustWatch.MyServices" ExpiringSoonDays="_settings.JustWatch.ExpiringSoonDays" />
+    <ResultsView Run="_run" MyServices="_settings.JustWatch.MyServices" ExpiringSoonDays="_settings.JustWatch.ExpiringSoonDays"
+                 CurrentUsername="@_settings.Letterboxd.Username" CurrentRegion="@_settings.JustWatch.Region" />
 }
 
 @code {

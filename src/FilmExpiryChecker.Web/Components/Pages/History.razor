@@ -19,7 +19,7 @@ else
 {
     <table class="history">
         <thead>
-            <tr><th>When</th><th>Films</th><th>On your services</th><th>Leaving soon</th><th></th></tr>
+            <tr><th>When</th><th>Films</th><th>On your services</th><th>Leaving soon</th><th>For</th><th></th></tr>
         </thead>
         <tbody>
             @foreach (var run in _runs)
@@ -29,6 +29,7 @@ else
                     <td>@run.Films</td>
                     <td>@run.OnMyServices</td>
                     <td class="urgent">@run.LeavingSoon</td>
+                    <td class="for">@run.Username · @run.Region</td>
                     <td class="row-actions">
                         @if (_confirming == run.Id)
                         {

@@ -141,10 +141,34 @@ public static class SettingsStore
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true, PropertyNameCaseInsensitive = true };
 
     /// <summary>The settings in the file, with defaults for anything missing. Unknown old fields are ignored.</summary>
+    /// <remarks>A file that can't be read as settings (hand-edited, say) gives the defaults rather than stopping the
+    /// app; <see cref="Problem"/> says what's wrong, so it can be shown (#47).</remarks>
     public static AppSettings Load(string path)
     {
         SafeFile.DiscardLeftover(path);
-        return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path), Json) ?? new AppSettings();
+        try
+        {
+            return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path), Json) ?? new AppSettings();
+        }
+        catch (JsonException)
+        {
+            return new AppSettings();
+        }
+    }
+
+    /// <summary>Why the settings file can't be read, or null if it can (or doesn't exist yet).</summary>
+    public static string? Problem(string path)
+    {
+        if (!File.Exists(path)) return null;
+        try
+        {
+            JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path), Json);
+            return null;
+        }
+        catch (JsonException ex)
+        {
+            return ex.LineNumber is { } line ? $"there's a mistake on line {line + 1}" : "it isn't valid";
+        }
     }
 
     public static void Save(string path, AppSettings settings) =>
