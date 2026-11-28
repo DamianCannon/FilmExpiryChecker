@@ -77,6 +77,41 @@ public sealed class StatusBarSpecs : IDisposable
             .ToList(),
     };
 
+    // ── What screen readers hear (#49) ──────────────────────────────────────────
+
+    [Fact]
+    public async Task Screen_readers_hear_a_refresh_start_and_finish_but_not_each_bit_of_progress()
+    {
+        var bar = _context.Render<StatusBar>();
+        var heard = new List<string>();
+        void Listen() => bar.WaitForAssertion(() => Assert.NotEqual(heard.LastOrDefault() ?? "", bar.Find(".status-announce").TextContent));
+
+        await _refresh.Push(new RefreshState.Running(RunStep.CheckingFilms, 1, 100, Now, null));
+        Listen(); heard.Add(bar.Find(".status-announce").TextContent);
+        await _refresh.Push(new RefreshState.Running(RunStep.CheckingFilms, 50, 100, Now, null));
+        bar.WaitForAssertion(() => Assert.Contains("50", bar.Find(".status-text").TextContent));
+        heard.Add(bar.Find(".status-announce").TextContent);
+        _latest.Replace(RunAt(Now, 3));
+        await _refresh.Push(new RefreshState.Idle(Now));
+        Listen(); heard.Add(bar.Find(".status-announce").TextContent);
+
+        Assert.Equal("Refreshing.", heard[0]);
+        Assert.Equal("Refreshing.", heard[1]);                         // progress went by unannounced
+        Assert.Equal(bar.Find(".status-text").TextContent, heard[2]);  // the finished line
+        Assert.Null(bar.Find(".status").GetAttribute("role"));         // the busy line itself isn't live
+    }
+
+    [Fact]
+    public async Task Screen_readers_hear_a_failure()
+    {
+        var bar = _context.Render<StatusBar>();
+
+        await _refresh.Push(new RefreshState.Running(RunStep.ReadingWatchlist, 0, null, Now, null));
+        await _refresh.Push(new RefreshState.Failed("Letterboxd couldn't be reached.", Now, null));
+
+        bar.WaitForAssertion(() => Assert.Contains("Letterboxd couldn't be reached.", bar.Find(".status-announce").TextContent));
+    }
+
     [Fact]
     public void It_starts_with_the_current_state()
     {

@@ -51,6 +51,7 @@ public class HtmlReporter
                 h2.cat4 {{ background: #457b9d; color: #fff; }}
                 h2.cat5 {{ background: #adb5bd; color: #fff; }}
                 h2.cat6 {{ background: #dee2e6; color: #555; }}
+                h2.cat7 {{ background: #6c757d; color: #fff; }}
                 .summary {{ background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px;
                             padding: 14px 20px; margin-bottom: 28px; font-size: 13px; }}
                 .summary span {{ margin-right: 24px; }}
@@ -87,7 +88,7 @@ public class HtmlReporter
             FilmCategory.LeavingSoonOtherServices => ("cat2", "⚠️",  true,  false),
             FilmCategory.AvailableMyServices      => ("cat3", "✅", false, false),
             FilmCategory.AvailableOtherServices   => ("cat4", "📺", false, true),
-            FilmCategory.RentOrBuyOnly            => ("cat5", "💷", false, false),
+            FilmCategory.RentOrBuyOnly            => ("cat7", "💷", false, false),
             FilmCategory.NotOnAnyService          => ("cat5", "❌", false, false),
             FilmCategory.NotFoundOnJustWatch      => ("cat6", "❓", false, false),
             _                                     => ("cat6", "?",  false, false)

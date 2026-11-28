@@ -33,12 +33,12 @@ public sealed class ServiceCatalog(HttpClient http, DataFolder data, ILoggerFact
         .ToList();
 
     /// <summary>The streaming services JustWatch lists for <paramref name="region"/>, by name. Empty if it can't be reached.</summary>
-    public Task<IReadOnlyList<StreamingService>> ServicesIn(string region) =>
-        _byRegion.GetOrAdd(region, Fetch).ContinueWith(t =>
-        {
-            if (t.Result.Count == 0) _byRegion.TryRemove(region, out _);   // try again next time
-            return t.Result;
-        }, TaskScheduler.Default);
+    public async Task<IReadOnlyList<StreamingService>> ServicesIn(string region)
+    {
+        var services = await _byRegion.GetOrAdd(region, Fetch);
+        if (services.Count == 0) _byRegion.TryRemove(region, out _);   // try again next time
+        return services;
+    }
 
     private async Task<IReadOnlyList<StreamingService>> Fetch(string region)
     {

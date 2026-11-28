@@ -8,8 +8,11 @@
 @inject FilmExpiryChecker.Web.Settings.CurrentSettings Current
 @inject TimeProvider Time
 
-<div class="status @_kind" role="status">
+@* Not a live region itself: it changes with every bit of progress. Screen readers hear only the moments that
+   matter (a refresh starting, finishing or failing), from the quiet region below (#49). *@
+<div class="status @_kind">
     <span class="status-text">@_line.Text</span>
+    <span class="visually-hidden status-announce" role="status">@_announcement</span>
     @if (_line.Progress is double progress)
     {
         @* A <progress> with no value is the browser's "busy" bar, for steps whose length isn't known. *@
@@ -30,6 +33,8 @@
 
     private StatusLine _line = new(string.Empty);
     private string _kind = "status--idle";
+    private string _announcement = string.Empty;
+    private Type? _announcedFor;
     private string? _summaryFor;
     private ResultsSummary? _summary;
     private int _renderPending;
@@ -86,6 +91,14 @@
         // A settings file that can't be read is said plainly while nothing's running (#47).
         if (state is not RefreshState.Running && Current.Problem is { } problem)
             _line = new StatusLine($"Your settings file couldn't be read ({problem}), so the defaults are in use. Save Settings to fix it.", PointToSettings: true);
+        // Said once when the kind of state changes, not on each tick: "Refreshing…", the finished line, the failure.
+        if (_announcedFor is not null && _announcedFor != state.GetType())
+            _announcement = state switch
+            {
+                RefreshState.Running => "Refreshing.",
+                _ => _line.Text,
+            };
+        _announcedFor = state.GetType();
         // A tinted band while refreshing or after a failure, so it catches the eye.
         _kind = state switch
         {

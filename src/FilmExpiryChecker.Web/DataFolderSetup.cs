@@ -6,7 +6,7 @@ namespace FilmExpiryChecker.Web;
 public sealed record LegacyFolders(IReadOnlyList<string> Folders);
 
 /// <summary>Makes the data folder ready (and does its one-time import) before the app serves anything.</summary>
-internal sealed class DataFolderSetup(DataFolder data, LegacyFolders legacy, ILogger<DataFolderSetup> log) : IHostedService
+internal sealed class DataFolderSetup(DataFolder data, LegacyFolders legacy, TimeProvider time, ILogger<DataFolderSetup> log) : IHostedService
 {
     public Task StartAsync(CancellationToken cancellationToken)
     {
@@ -15,6 +15,9 @@ internal sealed class DataFolderSetup(DataFolder data, LegacyFolders legacy, ILo
         if (imported.ImportedAnything)
             log.LogInformation("First start: imported settings from {Settings}, JustWatch cache from {Cache}, {Reports} report files.",
                 imported.Settings ?? "(defaults)", imported.JustWatchCache ?? "(none)", imported.Reports);
+        var oldLogs = LogFiles.Prune(data, time.GetUtcNow());
+        if (oldLogs.Count > 0)
+            log.LogInformation("Deleted {Count} log files over 30 days old.", oldLogs.Count);
         return Task.CompletedTask;
     }
 
