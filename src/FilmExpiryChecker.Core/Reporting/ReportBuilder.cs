@@ -69,26 +69,28 @@ public class ReportBuilder
         foreach (var unknown in known.Select(o => o.MonetizationType).Where(t => OfferKinds.Of(t) == OfferKind.Unknown))
             if (_unknownTypes.Add(unknown)) _onUnknownType?.Invoke(unknown);
 
-        // Only what can be streamed decides the groups. Per service: keep the earliest-dated offer (most urgent),
-        // or a permanent one if none is dated; a service streaming it free counts as free.
+        // Only what can be streamed decides the groups. A service keeps a film until its last listing there ends:
+        // any listing with no end date means it isn't leaving that service (#41). A service streaming it free
+        // counts as free.
         var streamable = known
             .Where(o => OfferKinds.Of(o.MonetizationType).IsStreamable())
             .GroupBy(o => o.PackageId)
-            .Select(g => (Offer: g.Where(o => o.ExpiryDate.HasValue).MinBy(o => o.ExpiryDate) ?? g.First(),
+            .Select(g => (PackageId: g.Key,
+                          Until: g.Any(o => o.ExpiryDate is null) ? null : g.Max(o => o.ExpiryDate),
                           Kind: g.Any(o => OfferKinds.Of(o.MonetizationType) == OfferKind.Free) ? OfferKind.Free : OfferKind.Subscription));
 
-        foreach (var (offer, kind) in streamable)
+        foreach (var (packageId, until, kind) in streamable)
         {
             var serviceOffer = new ServiceOffer
             {
-                PackageId = offer.PackageId,
-                ServiceName = _providerNames[offer.PackageId],
-                ExpiryDate = offer.ExpiryDate,
+                PackageId = packageId,
+                ServiceName = _providerNames[packageId],
+                ExpiryDate = until,
                 Kind = kind,
             };
 
             // Free services count as mine: anyone can watch them.
-            if (_myServiceIds.Contains(offer.PackageId) || kind == OfferKind.Free)
+            if (_myServiceIds.Contains(packageId) || kind == OfferKind.Free)
                 result.MyServiceOffers.Add(serviceOffer);
             else
                 result.OtherServiceOffers.Add(serviceOffer);
@@ -102,28 +104,26 @@ public class ReportBuilder
             .OrderBy(o => o.ServiceName, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        // Find earliest expiry across my services first, then other services
-        var myExpiringOffers = result.MyServiceOffers
-            .Where(o => o.ExpiryDate.HasValue && o.ExpiryDate.Value <= threshold)
-            .ToList();
+        bool Leaving(ServiceOffer o) => o.ExpiryDate is { } until && until <= threshold;
+        var myLeaving = result.MyServiceOffers.Where(Leaving).ToList();
 
-        var otherExpiringOffers = result.OtherServiceOffers
-            .Where(o => o.ExpiryDate.HasValue && o.ExpiryDate.Value <= threshold)
-            .ToList();
-
-        if (myExpiringOffers.Count > 0)
+        // 1. Leaving any of my services is flagged, even if it can be watched elsewhere: the soonest date shows.
+        if (myLeaving.Count > 0)
         {
             result.Category = FilmCategory.LeavingSoonMyServices;
-            result.EarliestExpiry = myExpiringOffers.Min(o => o.ExpiryDate!.Value);
+            result.EarliestExpiry = myLeaving.Min(o => o.ExpiryDate!.Value);
         }
-        else if (otherExpiringOffers.Count > 0)
-        {
-            result.Category = FilmCategory.LeavingSoonOtherServices;
-            result.EarliestExpiry = otherExpiringOffers.Min(o => o.ExpiryDate!.Value);
-        }
+        // 2. Staying on one of mine: nothing to lose, whatever services I don't have are doing.
         else if (result.MyServiceOffers.Count > 0)
         {
             result.Category = FilmCategory.AvailableMyServices;
+        }
+        // 3. Only elsewhere, and every service streaming it is leaving: the last chance (a trial, say) is when the
+        //    last of them goes, so that's the date shown.
+        else if (result.OtherServiceOffers.Count > 0 && result.OtherServiceOffers.All(Leaving))
+        {
+            result.Category = FilmCategory.LeavingSoonOtherServices;
+            result.EarliestExpiry = result.OtherServiceOffers.Max(o => o.ExpiryDate!.Value);
         }
         else if (result.OtherServiceOffers.Count > 0)
         {

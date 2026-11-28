@@ -79,12 +79,46 @@ public class ReportBuilderSpecs
     }
 
     [Fact]
-    public void A_film_staying_on_mine_but_leaving_elsewhere_is_leaving_soon_elsewhere()
+    public void A_film_staying_on_mine_but_leaving_a_service_I_dont_have_is_available_on_mine()
     {
-        // Current behaviour, pinned: a leaving-soon offer elsewhere outranks a permanent one on my service.
+        // Nothing to lose: it stays on Netflix whatever Apple TV does (#41).
         var result = One(On(Netflix), On(AppleTv, Now.AddDays(5)));
 
+        Assert.Equal(FilmCategory.AvailableMyServices, result.Category);
+        Assert.Null(result.EarliestExpiry);
+    }
+
+    [Fact]
+    public void Leaving_one_of_mine_is_flagged_even_while_staying_on_another_of_mine()
+    {
+        var result = One(On(Netflix, Now.AddDays(10)), On(Prime));
+
+        Assert.Equal(FilmCategory.LeavingSoonMyServices, result.Category);
+        Assert.Equal(Now.AddDays(10), result.EarliestExpiry);
+    }
+
+    [Fact]
+    public void Leaving_one_of_mine_is_flagged_even_while_staying_elsewhere()
+    {
+        Assert.Equal(FilmCategory.LeavingSoonMyServices, One(On(Netflix, Now.AddDays(10)), On(Disney)).Category);
+    }
+
+    [Fact]
+    public void Leaving_one_service_I_dont_have_while_staying_on_another_is_available_elsewhere()
+    {
+        var result = One(On(AppleTv, Now.AddDays(5)), On(Disney));
+
+        Assert.Equal(FilmCategory.AvailableOtherServices, result.Category);
+        Assert.Null(result.EarliestExpiry);
+    }
+
+    [Fact]
+    public void Leaving_every_service_I_dont_have_is_leaving_elsewhere_dated_when_the_last_goes()
+    {
+        var result = One(On(AppleTv, Now.AddDays(5)), On(Disney, Now.AddDays(20)));
+
         Assert.Equal(FilmCategory.LeavingSoonOtherServices, result.Category);
+        Assert.Equal(Now.AddDays(20), result.EarliestExpiry);
     }
 
     [Fact]
@@ -221,22 +255,23 @@ public class ReportBuilderSpecs
     // ── Several offers from one service ─────────────────────────────────────────
 
     [Fact]
-    public void Of_several_dated_offers_from_one_service_the_earliest_is_kept()
+    public void Of_several_dated_listings_on_one_service_the_last_decides()
     {
+        // The service keeps it until its last listing ends: 90 days, beyond the 60-day window (#41).
         var result = One(On(Netflix, Now.AddDays(90)), On(Netflix, Now.AddDays(10)));
 
-        Assert.Equal(FilmCategory.LeavingSoonMyServices, result.Category);
+        Assert.Equal(FilmCategory.AvailableMyServices, result.Category);
         Assert.Single(result.MyServiceOffers);
-        Assert.Equal(Now.AddDays(10), result.MyServiceOffers[0].ExpiryDate);
+        Assert.Equal(Now.AddDays(90), result.MyServiceOffers[0].ExpiryDate);
     }
 
     [Fact]
-    public void A_dated_offer_outranks_a_permanent_one_from_the_same_service()
+    public void A_service_with_a_permanent_listing_keeps_the_film_whatever_its_dated_one_says()
     {
-        // Current behaviour, pinned: the service is treated as leaving even though another offer stays.
         var result = One(On(Netflix), On(Netflix, Now.AddDays(10)));
 
-        Assert.Equal(FilmCategory.LeavingSoonMyServices, result.Category);
+        Assert.Equal(FilmCategory.AvailableMyServices, result.Category);
+        Assert.Null(result.MyServiceOffers.Single().ExpiryDate);
     }
 
     // ── Services JustWatch doesn't list ─────────────────────────────────────────

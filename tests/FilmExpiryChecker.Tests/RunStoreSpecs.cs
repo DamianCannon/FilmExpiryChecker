@@ -42,7 +42,7 @@ public sealed class RunStoreSpecs : IDisposable
         Films =
         {
             new SavedFilm { Film = new WatchlistFilm { Title = "High and Low", Year = 1963, Slug = "high-and-low", FilmId = "44542" }, Offers = [On(Netflix)] },
-            new SavedFilm { Film = new WatchlistFilm { Title = "Socrates", Year = null, Slug = "socrates", FilmId = "61097" }, Offers = [On(Disney), On(Disney, Morning.AddDays(90))] },
+            new SavedFilm { Film = new WatchlistFilm { Title = "Socrates", Year = null, Slug = "socrates", FilmId = "61097" }, Offers = [On(Disney, Morning.AddDays(90)), On(Disney, type: "RENT")] },
             new SavedFilm { Film = new WatchlistFilm { Title = "Kisapmata", Year = 1981, Slug = "kisapmata", FilmId = "154091" }, Offers = null },
             new SavedFilm { Film = new WatchlistFilm { Title = "Away from Her", Year = 2006, Slug = "away-from-her", FilmId = "50686" }, Offers = [] },
         },
@@ -68,7 +68,7 @@ public sealed class RunStoreSpecs : IDisposable
         Assert.Null(loaded.Films.Single(f => f.Film.Slug == "socrates").Film.Year);
 
         var socrates = loaded.Films.Single(f => f.Film.Slug == "socrates").Offers!;
-        Assert.Equal(new[] { (Disney, "FLATRATE", (string?)null), (Disney, "FLATRATE", "2027-02-24") },
+        Assert.Equal(new[] { (Disney, "FLATRATE", "2027-02-24"), (Disney, "RENT", (string?)null) },
             socrates.Select(o => (o.PackageId, o.MonetizationType, o.AvailableTo)));
     }
 
