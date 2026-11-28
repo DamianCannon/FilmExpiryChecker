@@ -144,6 +144,76 @@ public sealed class RunStoreSpecs : IDisposable
         Assert.Empty(Store.List());
     }
 
+    // ── Tidying up (#42) ────────────────────────────────────────────────────────
+
+    // Ten hours ahead of UTC: local Monday 00:00 is Sunday 14:00 UTC, so the UTC and local weeks disagree.
+    private static readonly TimeZoneInfo Plus10 = TimeZoneInfo.CreateCustomTimeZone("Test+10", TimeSpan.FromHours(10), "Test+10", "Test+10");
+
+    private static DateTimeOffset Local(int month, int day, int hour, int minute = 0) =>
+        new DateTimeOffset(2026, month, day, hour, minute, 0, TimeSpan.FromHours(10)).ToUniversalTime();
+
+    // Thursday 26 Nov 2026, midday local: this week began on Monday 23 Nov.
+    private static readonly DateTimeOffset Thursday = Local(11, 26, 12);
+
+    private string[] Kept() => Store.List().Select(e => e.Id).ToArray();
+
+    [Fact]
+    public void Every_run_from_this_week_is_kept()
+    {
+        var ids = new[] { Local(11, 23, 8), Local(11, 25, 19), Local(11, 26, 7) }.Select(t => Store.Save(Run(t)).Id).ToList();
+
+        var deleted = Store.Prune(Thursday, Plus10);
+
+        Assert.Empty(deleted);
+        Assert.Equal(ids.Order(), Kept().Order());
+    }
+
+    [Fact]
+    public void From_each_earlier_week_only_the_newest_is_kept()
+    {
+        Store.Save(Run(Local(11, 16, 8)));               // last week: Monday,
+        Store.Save(Run(Local(11, 20, 19)));              //            Friday,
+        var sunday = Store.Save(Run(Local(11, 22, 21))); //            Sunday (the newest)
+        var weekBefore = Store.Save(Run(Local(11, 10, 9)));
+        var monday = Store.Save(Run(Local(11, 23, 8)));  // this week
+
+        var deleted = Store.Prune(Thursday, Plus10);
+
+        Assert.Equal(2, deleted.Count);
+        Assert.Equal(new[] { monday.Id, sunday.Id, weekBefore.Id }, Kept());
+    }
+
+    [Fact]
+    public void A_week_with_one_run_keeps_it()
+    {
+        var only = Store.Save(Run(Local(10, 14, 9)));
+
+        Store.Prune(Thursday, Plus10);
+
+        Assert.Equal(new[] { only.Id }, Kept());
+    }
+
+    [Fact]
+    public void The_week_starts_at_midnight_on_Monday_in_the_users_own_time()
+    {
+        // 00:30 on Monday 23 Nov local is 14:30 on Sunday 22 Nov in UTC: by UTC it would be last week's newest,
+        // and last week's real newest (Sunday 23:30 local) would be deleted.
+        Store.Save(Run(Local(11, 21, 10)));
+        var lastSunday = Store.Save(Run(Local(11, 22, 23, 30)));
+        var mondayJustAfterMidnight = Store.Save(Run(Local(11, 23, 0, 30)));
+
+        Store.Prune(Thursday, Plus10);
+
+        Assert.Equal(new[] { mondayJustAfterMidnight.Id, lastSunday.Id }, Kept());
+    }
+
+    [Fact]
+    public void A_Sunday_run_counts_as_the_end_of_its_week()
+    {
+        Assert.Equal(new DateTime(2026, 11, 16), RunStore.WeekStart(Local(11, 22, 23, 59), Plus10));
+        Assert.Equal(new DateTime(2026, 11, 23), RunStore.WeekStart(Local(11, 23, 0, 0), Plus10));
+    }
+
     // ── Regrouping without fetching ─────────────────────────────────────────────
 
     [Fact]

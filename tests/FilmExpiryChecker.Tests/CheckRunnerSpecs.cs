@@ -136,6 +136,21 @@ public sealed class CheckRunnerSpecs : IDisposable
     }
 
     [Fact]
+    public async Task Saving_a_run_tidies_earlier_weeks_down_to_their_latest_and_keeps_the_new_one()
+    {
+        var store = new RunStore(Data);
+        SavedRun Old(int day, int hour) => store.Save(new SavedRun { RanAt = new DateTimeOffset(2026, 1, day, hour, 0, 0, TimeSpan.Zero) });
+        Old(5, 9); Old(7, 9); var newestThatWeek = Old(11, 20);   // Mon 5 – Sun 11 Jan 2026
+        var onlyOneThatWeek = Old(14, 9);                          // the next week
+
+        var result = await new CheckRunner(new HttpClient(Sites()), Data, time: InstantWaits.Instance).RunAsync(Settings());
+
+        var kept = store.List().Select(e => e.Id).ToArray();
+        Assert.Equal(new[] { result.Run!.Id, onlyOneThatWeek.Id, newestThatWeek.Id }, kept);
+        Assert.Equal(result.Run.Id, store.Latest()!.Id);
+    }
+
+    [Fact]
     public async Task A_cancelled_run_is_not_saved()
     {
         var progress = new RecordedProgress<RunProgress>(p =>

@@ -166,6 +166,11 @@ public sealed class CheckRunner(
         });
         log.LogInformation("Run saved as {Id}.", run.Id);
 
+        // Earlier weeks keep only their latest run; this week keeps them all (#42).
+        var pruned = new RunStore(data).Prune(_time.GetUtcNow(), _time.LocalTimeZone);
+        if (pruned.Count > 0)
+            log.LogInformation("Tidied {Count} older runs, keeping the latest of each earlier week.", pruned.Count);
+
         return new RunResult { Outcome = RunOutcome.Completed, Films = run.Group(_time), ServiceCount = services.Count, Run = run };
     }
 

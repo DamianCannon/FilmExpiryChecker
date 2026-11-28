@@ -112,6 +112,30 @@ public sealed class RunStore(DataFolder data)
         return true;
     }
 
+    /// <summary>
+    /// Tidies up as it goes (#42): every run from this week is kept; from each earlier week, only its newest.
+    /// Weeks run Monday to Sunday in <paramref name="zone"/>. Returns the ids deleted.
+    /// </summary>
+    public IReadOnlyList<string> Prune(DateTimeOffset now, TimeZoneInfo zone)
+    {
+        var thisWeek = WeekStart(now, zone);
+        var deleted = List()
+            .Where(e => WeekStart(e.RanAt, zone) < thisWeek)
+            .GroupBy(e => WeekStart(e.RanAt, zone))
+            .SelectMany(week => week.Skip(1))   // List() is newest first, so each week's first is its newest
+            .Select(e => e.Id)
+            .ToList();
+        foreach (var id in deleted) Delete(id);
+        return deleted;
+    }
+
+    /// <summary>The local date of the Monday starting the week <paramref name="moment"/> falls in.</summary>
+    public static DateTime WeekStart(DateTimeOffset moment, TimeZoneInfo zone)
+    {
+        var day = TimeZoneInfo.ConvertTime(moment, zone).Date;
+        return day.AddDays(-(((int)day.DayOfWeek + 6) % 7));
+    }
+
     /// <summary>The newest run that can be read, or null if there are none.</summary>
     public SavedRun? Latest() => List().Select(e => Load(e.Id)).FirstOrDefault(r => r is not null);
 
