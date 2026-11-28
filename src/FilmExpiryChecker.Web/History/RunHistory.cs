@@ -53,7 +53,7 @@ public sealed class RunHistory(DataFolder data, CurrentSettings settings, Latest
     }
 
     /// <summary>The run as CSV, in the command line's columns, with days remaining counted from today.</summary>
-    public string Csv(SavedRun run) => new CsvReporter().ToCsv(Group(run), time.GetUtcNow());
+    public string Csv(SavedRun run) => new CsvReporter().ToCsv(Group(run), time.GetUtcNow(), time.LocalTimeZone);
 
     /// <summary>Deletes a run. If it was the latest, the one before becomes the latest.</summary>
     public bool Delete(string id)

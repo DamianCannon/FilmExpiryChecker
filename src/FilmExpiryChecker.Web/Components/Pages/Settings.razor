@@ -106,7 +106,7 @@
 
         <label for="cache">Keep JustWatch's answers for</label>
         <span class="with-unit"><input id="cache" type="number" min="1" max="30" @bind="_edit.Cache.ExpiryDays" /> days</span>
-        <p class="hint">Films checked more recently than this aren't looked up again, which makes a refresh quicker.</p>
+        <p class="hint">Films checked more recently than this aren't looked up again, which makes a refresh quicker. Films on your services are always checked every 2 days, and any film is checked again once a leaving date arrives, so a new leaving date is never missed for long.</p>
 
         <span class="label">Reports the command line writes</span>
         <label class="inline"><input type="checkbox" @bind="_edit.Output.Html" /> HTML</label>

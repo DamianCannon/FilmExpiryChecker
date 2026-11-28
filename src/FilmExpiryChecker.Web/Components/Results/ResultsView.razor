@@ -43,14 +43,14 @@
             <tbody>
                 @foreach (var film in group)
                 {
-                    var days = film.DaysLeftAt(_now);
+                    var days = film.DaysLeftAt(_now, Time.LocalTimeZone);
                     <tr @key="film.Film.FilmId">
                         <td class="title"><a href="https://letterboxd.com/film/@film.Film.Slug/" target="_blank" rel="noopener">@film.Film.Title</a></td>
                         <td class="year">@film.Film.Year</td>
                         @if (look.ShowExpiry)
                         {
                             <td class="@Urgency(days)">@film.ExpiryDisplay</td>
-                            <td class="@Urgency(days)">@(days is null ? "" : $"{days}d")</td>
+                            <td class="@Urgency(days)">@(days switch { null => "", 0 => "last day", _ => $"{days}d" })</td>
                         }
                         @if (look.ShowMine)
                         {
@@ -129,7 +129,7 @@
             builder.AddContent(10, $" ({offer.Kind.Words()})");
             builder.CloseElement();
             if (offer.ExpiryDate is { } until)
-                builder.AddContent(11, $" (until {until:dd MMM yyyy})");
+                builder.AddContent(11, $" (until {Dates.Day(until)})");
             builder.CloseElement();
         }
     };

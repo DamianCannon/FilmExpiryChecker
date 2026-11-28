@@ -235,18 +235,18 @@ public class ReportBuilderSpecs
     }
 
     [Fact]
-    public void Leaving_a_minute_after_the_threshold_counts_as_available()
+    public void Leaving_the_day_after_the_threshold_counts_as_available()
     {
-        var result = One(On(Netflix, Now.AddDays(ThresholdDays).AddMinutes(1)));
+        var result = One(On(Netflix, Now.AddDays(ThresholdDays + 1)));
 
         Assert.Equal(FilmCategory.AvailableMyServices, result.Category);
         Assert.Null(result.EarliestExpiry);
     }
 
     [Fact]
-    public void Leaving_another_service_a_minute_after_the_threshold_counts_as_available_elsewhere()
+    public void Leaving_another_service_the_day_after_the_threshold_counts_as_available_elsewhere()
     {
-        var result = One(On(Disney, Now.AddDays(ThresholdDays).AddMinutes(1)));
+        var result = One(On(Disney, Now.AddDays(ThresholdDays + 1)));
 
         Assert.Equal(FilmCategory.AvailableOtherServices, result.Category);
         Assert.Null(result.EarliestExpiry);
